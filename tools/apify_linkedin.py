@@ -13,6 +13,8 @@
 """
 from __future__ import annotations
 
+import copy
+import hashlib
 import re
 import unicodedata
 
@@ -91,6 +93,22 @@ def _extract_company(parts, desc: str) -> str:
     if _looks_like_role(cand):
         cand = ""  # garde-fou : jamais un intitule de poste comme etablissement
     return cand[:80]
+
+
+def _fake_contact(full_name: str, school: str):
+    """Coordonnees SIMULEES (email + telephone) que le prospect de demonstration
+    'donne' lui-meme en conversation, ce qui exerce la capture vers le CRM. Donnees
+    de test (issues du dialogue simule), jamais presentees comme verifiees."""
+    ascii_lower = lambda s: unicodedata.normalize("NFKD", (s or "").lower()).encode("ascii", "ignore").decode()
+    toks = [t for t in re.sub(r"[^a-z ]", " ", ascii_lower(full_name)).split() if t]
+    first = toks[0] if toks else "contact"
+    last = toks[-1] if len(toks) > 1 else "ecole"
+    dom = re.sub(r"[^a-z0-9]+", "-", ascii_lower(school)).strip("-")
+    domain = (dom[:24] + ".fr") if dom else "gmail.com"
+    email = f"{first}.{last}@{domain}"
+    d = f"{int(hashlib.md5((full_name or 'x').encode()).hexdigest(), 16) % 100000000:08d}"
+    phone = f"06 {d[0:2]} {d[2:4]} {d[4:6]} {d[6:8]}"
+    return email, phone
 
 
 class ApifyLinkedIn:
@@ -225,7 +243,15 @@ class ApifyLinkedIn:
                 pid = f"li_{base}_{n}"
                 n += 1
             self.directory[pid] = f
-            self.scripts[pid] = SCRIPTS[i % len(SCRIPTS)]
+            # Conversation simulee : le prospect qui prend RDV partage ses coordonnees
+            # (email + telephone) -> demontre la capture vers le CRM. Donnees de test.
+            script = copy.deepcopy(SCRIPTS[i % len(SCRIPTS)])
+            if script:  # (le prospect qui ne repond jamais garde un script vide)
+                email, phone = _fake_contact(f.get("full_name", ""), f.get("company", ""))
+                last = dict(script[-1])
+                last["text"] = last["text"].rstrip() + f" Au passage, vous pouvez me joindre a {email} ou au {phone}."
+                script[-1] = last
+            self.scripts[pid] = script
             prospects.append({
                 "id": pid, "full_name": f["full_name"], "headline": f.get("headline", ""),
                 "company": f.get("company", ""), "profile_url": f.get("profile_url", ""),
