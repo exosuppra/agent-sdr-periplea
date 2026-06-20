@@ -68,6 +68,31 @@ def _looks_like_role(s: str) -> bool:
     return bool(_ROLE_RE.match((s or "").strip()))
 
 
+# Extraction du nom d'ETABLISSEMENT depuis la description d'un resultat (snippet
+# LinkedIn), par ordre de fiabilite : structure "Experience : <Org>", puis "chez/au
+# sein de <Org>", puis "a l'<Org>". On ne garde JAMAIS un intitule de poste.
+_EXP_RE = re.compile(r"exp.rience\s*:\s*([^·|\n]+)", re.I)
+_CHEZ_RE = re.compile(r"\b(?:chez|au sein d[eu’'][^A-Za-z0-9]*l?[’']?)\s*([^,.·|\n]+)", re.I)
+_ALECOLE_RE = re.compile(r"\b[aà]\s+l[’']\s*([A-ZÉÈ][^,.·|\n]+)")
+
+
+def _extract_company(parts, desc: str) -> str:
+    desc = desc or ""
+    cand = ""
+    for rx in (_EXP_RE, _CHEZ_RE, _ALECOLE_RE):
+        m = rx.search(desc)
+        if m:
+            cand = m.group(1).strip()
+            break
+    if not cand and len(parts) > 1 and not _looks_like_role(parts[-1]):
+        cand = parts[-1]  # dernier segment du titre, s'il n'est pas un intitule de poste
+    # coupe a la 1re separation (·, |, ellipse, fin de phrase, virgule) ; garde les " - "
+    cand = re.split(r"\s*·\s*|\s*\|\s*|…|\.\.\.|\.\s|,\s", cand)[0].strip(" -")
+    if _looks_like_role(cand):
+        cand = ""  # garde-fou : jamais un intitule de poste comme etablissement
+    return cand[:80]
+
+
 class ApifyLinkedIn:
     def __init__(self, settings):
         if not settings.apify_token:
@@ -171,15 +196,9 @@ class ApifyLinkedIn:
                 name = parts[0]
                 # le nom de l'ecole/entreprise est en general le DERNIER segment du titre
                 # ("Nom - Poste - Ecole"), pas le 2e (qui est souvent l'intitule de poste).
-                company = parts[-1] if len(parts) > 1 else ""
                 desc = _txt(r.get("description"))
-                # mais si le dernier segment est en fait un INTITULE DE POSTE (titre
-                # "Nom - Poste" sans segment ecole), on ne le prend pas pour l'ecole :
-                # on tente "chez X" / "at X" dans la description, sinon on laisse vide.
-                if company and _looks_like_role(company):
-                    m = (re.search(r"\bchez\s+([^,.|·\n]+)", desc, re.I)
-                         or re.search(r"\bat\s+([A-Z][^,.|·\n]+)", desc))
-                    company = m.group(1).strip() if m else ""
+                # etablissement = ecole reelle, extraite de la description (jamais l'intitule de poste)
+                company = _extract_company(parts, desc)
                 headline = desc[:140] or (" - ".join(parts[1:]))
                 out.append({"full_name": name, "headline": headline, "company": company,
                             "profile_url": url, "region": "", "summary": desc})

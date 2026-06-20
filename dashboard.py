@@ -192,6 +192,8 @@ button.warn{background:#7f1d1d}
 .card:hover{border-color:#4b5566}
 .card .nm{font-weight:600;font-size:13px}
 .card .sub{color:var(--mut);font-size:11px;margin-top:2px}
+.card .lnk{display:inline-block;margin-top:5px;font-size:11px;color:#60a5fa;text-decoration:none}
+.card .lnk:hover{text-decoration:underline}
 .badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:10px;background:#2a2f3a;color:var(--mut);margin-top:6px}
 .trace{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:78vh;overflow:auto}
 .trace h2{font-size:13px;margin:2px 4px 10px}
@@ -336,6 +338,7 @@ function render(s){
       ps.map(p=>`<div class="card" style="--ac:${col[2]}" onclick="open_('${p.id}')">
         <div class="nm">${esc(p.name)}</div><div class="sub">${esc(p.company)}</div>
         <div class="sub">${esc(p.headline)}</div>
+        ${(p.attributes&&p.attributes.profile_url)?`<a class="lnk" href="${esc(p.attributes.profile_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Profil LinkedIn ↗</a>`:''}
         ${p.follow_up_count?`<span class="badge">${p.follow_up_count} relance(s)</span>`:''}</div>`).join('')+`</div>`;
   }).join('');
   document.getElementById('trace').innerHTML=s.decisions.map(d=>{
