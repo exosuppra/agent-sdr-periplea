@@ -284,12 +284,11 @@ DEROULE TYPE PAR PROSPECT (tu restes maitre de l'ordre et des priorites) :
 - des que le prospect accepte un echange ou demande un horaire, NE repose PAS de question
   de decouverte : propose des creneaux ou confirme. Avance toujours vers le RDV, sans revenir
   en arriere.
-- COORDONNEES OBLIGATOIRES AVANT TOUT RDV : un RDV n'est possible QUE si tu as l'email professionnel
-  ET le numero de telephone du prospect (indispensables pour l'invitation agenda et la confirmation).
-  Des que le prospect accepte le principe d'un echange, demande-lui SYSTEMATIQUEMENT son email ET son
-  telephone, en meme temps que tu proposes les creneaux. Ne reserve JAMAIS (book_meeting) tant que tu
-  n'as pas les DEUX ; s'il en manque un, redemande-le avant de confirmer. Ces coordonnees, partagees
-  par le prospect, sont enregistrees automatiquement dans le CRM.
+- COORDONNEES AVANT TOUT RDV : pour envoyer l'invitation, tu as besoin de l'email professionnel du
+  prospect (OBLIGATOIRE). Demande-lui aussi son telephone pour confirmer le rendez-vous. Des que le
+  prospect accepte le principe d'un echange, demande son email ET son telephone en meme temps que tu
+  proposes les creneaux. Ne reserve (book_meeting) qu'une fois que tu as au moins l'email ; le telephone
+  est enregistre s'il le donne. Ces coordonnees sont enregistrees automatiquement dans le CRM.
 - RDV propose et creneau choisi : book_meeting (reserve le creneau choisi, sans nouvelle question).
 - DEPLACEMENT : si un prospect dont le RDV est DEJA pris (etat RDV pris) signale un empechement,
   ne reserve pas un 2e RDV. Propose-lui de nouveaux creneaux (propose_meeting), puis deplace
@@ -1130,16 +1129,13 @@ class Orchestrator:
         # garde anti-doublon : un prospect deja booke -> on DEPLACE au lieu de re-reserver
         if p and (p.get("attributes") or {}).get("booking_uid") and getattr(self.cal, "reschedule", None):
             return self._do_reschedule_meeting(p, args, cycle)
-        # COORDONNEES OBLIGATOIRES : un RDV exige l'email ET le telephone (invitation
-        # agenda + confirmation). S'il en manque un, on NE reserve pas : l'agent doit
-        # le demander au prospect avant de confirmer.
+        # EMAIL OBLIGATOIRE : un RDV exige au moins l'email (invitation agenda). Le
+        # telephone est demande aussi mais reste optionnel (LinkedIn ne l'expose pas
+        # publiquement : on ne l'invente jamais, il n'est saisi que si le prospect le donne).
         attrs = p.get("attributes") or {}
-        manque = [lbl for lbl, k in (("son email", "email"), ("son numero de telephone", "phone"))
-                  if not (attrs.get(k) or "").strip()]
-        if manque:
-            return ("RDV NON RESERVE : il manque " + " et ".join(manque) + ". Un rendez-vous exige "
-                    "l'email ET le telephone du prospect (pour l'invitation agenda et la confirmation). "
-                    "Demande-lui ce qui manque (send_message), puis reserve une fois que tu l'as.")
+        if not (attrs.get("email") or "").strip():
+            return ("RDV NON RESERVE : il manque l'email du prospect (indispensable pour envoyer "
+                    "l'invitation agenda). Demande-lui son email (send_message), puis reserve.")
         if not p["offered_slots"]:
             return "REFUS : aucun creneau n'a encore ete propose a ce prospect."
         requested = args["slot_id"]
@@ -1360,8 +1356,8 @@ def chat_reply(settings, profile: str, history: list, message: str, calendar=Non
         f"sur LinkedIn avec un prospect : {profile}. Objectif : mener la conversation de facon credible, "
         "repondre aux objections et aux questions, detecter le bon moment et proposer un rendez-vous de "
         "30 minutes (entre 11h et 18h30). Avant de confirmer un RDV, demande au prospect son email "
-        "professionnel ET un numero de telephone (indispensables pour l'invitation et la confirmation), "
-        "et ne confirme qu'une fois que tu as les deux. Ne donne jamais de prix ferme sans cadrer un "
+        "professionnel (obligatoire pour l'invitation) et son telephone (pour confirmer) ; confirme une "
+        "fois que tu as au moins l'email. Ne donne jamais de prix ferme sans cadrer un "
         "echange. Ton professionnel, vouvoiement, concis (2 a 4 phrases). En francais. "
         "Adresse-toi au prospect par sa civilite et son NOM DE FAMILLE ('Bonjour Madame Seguin', "
         "'Bonjour Monsieur Dupont'), jamais par son prenom seul ; deduis Madame ou Monsieur du prenom, "

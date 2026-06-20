@@ -406,12 +406,18 @@ function drawModal(){
     ${journalBlock(p)}</div></div>`;
 }
 let chatHistory=[], chatAutoStarted=false;
+// Anti-rebond : un prospect peut envoyer 2, 3, 4 messages a la suite. On attend
+// 10 s (le delai se rearme a chaque nouveau message) avant de TOUT compiler et de
+// repondre une seule fois, de facon pertinente.
+let pendingMsgs=[], chatTimer=null, chatBusy=false, chatWaiting=false;
+const CHAT_DEBOUNCE_MS=10000;
 function chatProfile(){const e=document.getElementById('chatprofile');return e?e.value.trim():'';}
 function renderChat(){
   const l=document.getElementById('chatlog'); if(!l)return;
-  const items = lastPilot.active
+  let items = lastPilot.active
     ? (lastPilot.transcript||[]).map(m=>({role:(m.who==='agent'?'agent':'prospect'),text:m.text}))
-    : chatHistory;
+    : chatHistory.slice();
+  if(!lastPilot.active && chatWaiting) items=items.concat([{role:'agent',text:'…'}]);
   l.innerHTML=items.map(m=> m.role==='sys'
       ? `<div class="hint" style="padding:8px 6px">${esc(m.text)}</div>`
       : `<div class="cbub ${m.role==='agent'?'cag':'cme'}">${esc(m.text)}</div>`).join('')
@@ -424,14 +430,29 @@ async function sendChat(){
     await fetch('/api/inject_reply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:msg})});
     return; // la transcription se met à jour au prochain rafraîchissement
   }
-  const prior=chatHistory.slice();
-  chatHistory.push({role:'prospect',text:msg}); chatHistory.push({role:'agent',text:'…'}); renderChat();
+  if(chatHistory.length && chatHistory[chatHistory.length-1].role==='sys') return; // conversation terminée
+  // On AFFICHE le message tout de suite, mais on retarde la reponse de l'agent :
+  // s'il arrive d'autres messages dans les 10 s, on les compile tous ensemble.
+  chatHistory.push({role:'prospect',text:msg}); pendingMsgs.push(msg);
+  chatWaiting=true; renderChat();
+  if(chatTimer) clearTimeout(chatTimer);
+  chatTimer=setTimeout(flushChat, CHAT_DEBOUNCE_MS);
+}
+async function flushChat(){
+  chatTimer=null;
+  if(chatBusy){ chatTimer=setTimeout(flushChat, 1500); return; }  // attend l'appel en cours
+  const batch=pendingMsgs.slice(); pendingMsgs=[];
+  if(!batch.length){ chatWaiting=false; renderChat(); return; }
+  chatBusy=true;
+  const prior=chatHistory.slice(0, chatHistory.length - batch.length);  // tout AVANT ce lot
+  const combined=batch.join("\\n");  // l'agent recoit l'ensemble des messages d'un coup
   try{
-    const r=await (await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history:prior,message:msg,profile:chatProfile()})})).json();
-    if(r.closed){ chatHistory.pop(); if(!(chatHistory.length && chatHistory[chatHistory.length-1].role==='sys')) chatHistory.push({role:'sys',text:"Conversation terminée : le prospect a demandé l'arrêt, l'agent ne répond plus."}); }
-    else { chatHistory[chatHistory.length-1]={role:'agent',text:r.reply||'(pas de réponse)'}; }
-  }catch(e){ chatHistory[chatHistory.length-1]={role:'agent',text:'(erreur réseau)'}; }
-  renderChat();
+    const r=await (await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history:prior,message:combined,profile:chatProfile()})})).json();
+    chatWaiting=false;
+    if(r.closed){ if(!(chatHistory.length && chatHistory[chatHistory.length-1].role==='sys')) chatHistory.push({role:'sys',text:"Conversation terminée : le prospect a demandé l'arrêt, l'agent ne répond plus."}); }
+    else { chatHistory.push({role:'agent',text:r.reply||'(pas de réponse)'}); }
+  }catch(e){ chatWaiting=false; chatHistory.push({role:'agent',text:'(erreur réseau)'}); }
+  finally{ chatBusy=false; renderChat(); }
 }
 function updatePilotWhy(){
   const box=document.getElementById('pilotwhy'); if(!box)return;

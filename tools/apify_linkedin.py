@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import copy
-import hashlib
 import re
 import unicodedata
 
@@ -24,8 +23,8 @@ from chaos import tool_is_down
 from .base import ToolUnavailable, ToolError
 
 HARVEST = "harvestapi~linkedin-profile-search"
-HARVEST_PROFILE = "harvestapi~linkedin-profile-scraper"   # scrape d'un profil precis : entreprise + poste reels
-PROFILE_MODE = "Profile details no email ($4 per 1k)"      # ~0,004 $ par profil
+HARVEST_PROFILE = "harvestapi~linkedin-profile-scraper"   # scrape d'un profil precis : entreprise + poste + email reels
+PROFILE_MODE = "Profile details + email search ($10 per 1k)"   # ~0,01 $ par profil, AVEC l'email pro verifie
 GOOGLE = "apify~google-search-scraper"
 API = "https://api.apify.com/v2/acts"
 
@@ -104,22 +103,6 @@ def _extract_company(parts, desc: str) -> str:
     if _looks_like_role(cand) or _DEPT_RE.search(cand):
         cand = ""  # garde-fou : jamais un intitule de poste/service comme etablissement
     return cand[:80]
-
-
-def _fake_contact(full_name: str, school: str):
-    """Coordonnees SIMULEES (email + telephone) que le prospect de demonstration
-    'donne' lui-meme en conversation, ce qui exerce la capture vers le CRM. Donnees
-    de test (issues du dialogue simule), jamais presentees comme verifiees."""
-    ascii_lower = lambda s: unicodedata.normalize("NFKD", (s or "").lower()).encode("ascii", "ignore").decode()
-    toks = [t for t in re.sub(r"[^a-z ]", " ", ascii_lower(full_name)).split() if t]
-    first = toks[0] if toks else "contact"
-    last = toks[-1] if len(toks) > 1 else "ecole"
-    dom = re.sub(r"[^a-z0-9]+", "-", ascii_lower(school)).strip("-")
-    domain = (dom[:24] + ".fr") if dom else "gmail.com"
-    email = f"{first}.{last}@{domain}"
-    d = f"{int(hashlib.md5((full_name or 'x').encode()).hexdigest(), 16) % 100000000:08d}"
-    phone = f"06 {d[0:2]} {d[2:4]} {d[4:6]} {d[6:8]}"
-    return email, phone
 
 
 class ApifyLinkedIn:
@@ -223,6 +206,12 @@ class ApifyLinkedIn:
             if title:
                 f["headline"] = title.strip()[:120]   # le METIER reel (-> jobtitle HubSpot)
                 f["job_title"] = title.strip()[:120]
+            # email pro REEL et verifie (mode email search) : on prend le 1er deliverable
+            emails = it.get("emails") if isinstance(it.get("emails"), list) else []
+            best = next((e for e in emails if isinstance(e, dict) and e.get("deliverable")),
+                        emails[0] if emails else None)
+            if isinstance(best, dict) and _txt(best.get("email")):
+                f["email"] = best["email"].strip()
         return found
 
     def _parse_harvest(self, items, limit) -> list[dict]:
@@ -296,13 +285,14 @@ class ApifyLinkedIn:
                 pid = f"li_{base}_{n}"
                 n += 1
             self.directory[pid] = f
-            # Conversation simulee : le prospect qui prend RDV partage ses coordonnees
-            # (email + telephone) -> demontre la capture vers le CRM. Donnees de test.
+            # Conversation simulee : a la prise de RDV, le prospect confirme son email pro
+            # REEL (issu de l'enrichissement) pour recevoir l'invitation. AUCUNE donnee
+            # inventee : si l'email n'a pas pu etre trouve, le prospect ne le donne pas.
             script = copy.deepcopy(SCRIPTS[i % len(SCRIPTS)])
-            if script:  # (le prospect qui ne repond jamais garde un script vide)
-                email, phone = _fake_contact(f.get("full_name", ""), f.get("company", ""))
+            real_email = (f.get("email") or "").strip()
+            if script and real_email:
                 last = dict(script[-1])
-                last["text"] = last["text"].rstrip() + f" Au passage, vous pouvez me joindre a {email} ou au {phone}."
+                last["text"] = last["text"].rstrip() + f" Pour l'invitation, vous pouvez m'ecrire a {real_email}."
                 script[-1] = last
             self.scripts[pid] = script
             prospects.append({
@@ -310,7 +300,7 @@ class ApifyLinkedIn:
                 "company": f.get("company", ""), "profile_url": f.get("profile_url", ""),
                 "attributes": {"region": f.get("region", ""), "profile_url": f.get("profile_url", ""),
                                "summary": f.get("summary", ""), "job_title": f.get("job_title", ""),
-                               "source": "Apify (profil reel, taille d'ecole a confirmer)"},
+                               "source": "Apify (profil reel)"},
             })
         return prospects
 

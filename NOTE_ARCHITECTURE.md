@@ -25,7 +25,7 @@ SQLite, un seul fichier, trois tables : `prospects` (machine à états NEW vers 
 
 Aucun outil d'automatisation n'est conforme aux CGU de LinkedIn (art. 8.2). La posture honnête est la minimisation du risque, pas la conformité.
 
-- Sourcing découplé du compte : via Apify, sans login ni cookie LinkedIn, donc aucun compte exposé. En deux temps : une recherche Google (`site:linkedin.com/in`) pour identifier les profils, puis un enrichissement qui lit chaque fiche publique (acteur harvestapi) pour en tirer l'entreprise et le poste réels. Le risque est reporté sur les CGU de Google et LinkedIn (porté par Apify), pas éliminé.
+- Sourcing découplé du compte : via Apify, sans login ni cookie LinkedIn, donc aucun compte exposé. En deux temps : une recherche Google (`site:linkedin.com/in`) pour identifier les profils, puis un enrichissement qui lit chaque fiche publique (acteur harvestapi) pour en tirer l'entreprise, le poste et l'email professionnel vérifié (déliverabilité contrôlée). Le risque est reporté sur les CGU de Google et LinkedIn (porté par Apify), pas éliminé.
 - Envoi via Unipile (choix détaillé en section 2) : seul l'envoi touche réellement le compte. Dès la 1re invitation le compte est exposé : on réduit la fréquence, on ne supprime pas le risque.
 - Cadence prudente persistée en base : de l'ordre de 100 invitations par semaine, espacées aléatoirement, warm-up 30 jours pour un compte neuf. Prochaine étape : une boucle de rétroaction sur le taux d'acceptation avec kill-switch.
 - Messages tous générés par le LLM : pas de template identique, principal déclencheur de bannissement.
@@ -34,7 +34,7 @@ Aucun outil d'automatisation n'est conforme aux CGU de LinkedIn (art. 8.2). La p
 
 ## 5. Économie unitaire
 
-- Sourcing (Apify) : plan gratuit de 5 $ de crédit par mois. Recherche d'environ 0,001 à 0,002 $ par page (10 profils), puis enrichissement de profil d'environ 0,004 $ par prospect (entreprise et poste réels). Pour 400 prospects par mois, de l'ordre de 2 $, dans ou proche du crédit gratuit.
+- Sourcing (Apify) : plan gratuit de 5 $ de crédit par mois. Recherche d'environ 0,001 à 0,002 $ par page (10 profils), puis enrichissement de profil d'environ 0,01 $ par prospect (entreprise, poste et email pro vérifié). Pour 400 prospects par mois, de l'ordre de 4 à 5 $.
 - LLM (Claude) : environ 30 appels Sonnet pour le parcours de démo, soit de l'ordre de 0,10 à 0,15 € par RDV (estimation). Levier : Haiku sur les étapes routinières, Sonnet sur la rédaction.
 - Outils : Unipile à partir de 49 €/mois (jusqu'à 10 comptes connectés, +5 €/compte au-delà, requêtes illimitées) ; HubSpot et Cal.com gratuits.
 - Coût par RDV dominé par Unipile, de l'ordre de 1 € par RDV à 50 RDV/mois, décroissant quand le volume monte.
