@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+*.db
+logs/
+chaos.json
+_full.txt
+hubspot_map.json
+unipile_map.json
+do_not_contact.json
