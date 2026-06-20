@@ -24,8 +24,16 @@ from chaos import tool_is_down
 from .base import ToolUnavailable, ToolError
 
 HARVEST = "harvestapi~linkedin-profile-search"
+HARVEST_PROFILE = "harvestapi~linkedin-profile-scraper"   # scrape d'un profil precis : entreprise + poste reels
+PROFILE_MODE = "Profile details no email ($4 per 1k)"      # ~0,004 $ par profil
 GOOGLE = "apify~google-search-scraper"
 API = "https://api.apify.com/v2/acts"
+
+
+def _slug(url: str) -> str:
+    """Identifiant public d'un profil LinkedIn (la partie apres /in/)."""
+    m = re.search(r"/in/([^/?#]+)", url or "")
+    return m.group(1).lower().rstrip("/") if m else ""
 
 # Conversations simulees (variees) appliquees aux vrais prospects trouves.
 SCRIPTS = [
@@ -164,6 +172,7 @@ class ApifyLinkedIn:
                 "countryCode": "fr", "languageCode": "fr"}
         out = self._parse_google(self._run_actor(GOOGLE, body), limit)
         if out:
+            out = self._enrich_profiles(out)  # entreprise + poste REELS lus sur la fiche
             return self._register(out)
         # 2) Fallback : harvestapi avec UN seul titre (donnees structurees)
         try:
@@ -174,6 +183,47 @@ class ApifyLinkedIn:
         except ToolError:
             out = []
         return self._register(out)
+
+    def _enrich_profiles(self, found: list[dict]) -> list[dict]:
+        """Lit la VRAIE fiche de chaque profil (harvestapi, en un seul appel) pour en
+        tirer l'entreprise et le poste reels, propres et separes. Best-effort : si le
+        scrape echoue, on garde ce que l'extrait de recherche avait donne."""
+        urls = [f.get("profile_url") for f in found if f.get("profile_url")]
+        if not urls:
+            return found
+        try:
+            items = self._run_actor(HARVEST_PROFILE, {"queries": urls, "profileScraperMode": PROFILE_MODE})
+        except Exception:
+            return found
+        by_slug = {}
+        for it in items if isinstance(items, list) else []:
+            if not isinstance(it, dict):
+                continue
+            slug = _txt(it.get("publicIdentifier")).lower() or _slug(_txt(it.get("linkedinUrl")))
+            if slug:
+                by_slug[slug] = it
+        for f in found:
+            it = by_slug.get(_slug(f.get("profile_url", "")))
+            if not it:
+                continue
+            cands = []
+            cp = it.get("currentPosition")
+            if isinstance(cp, dict):
+                cands.append(cp)
+            exp = it.get("experience")
+            if isinstance(exp, list) and exp and isinstance(exp[0], dict):
+                cands.append(exp[0])
+            company = title = ""
+            for c in cands:
+                company = company or _txt(c.get("companyName"))
+                title = title or _txt(c.get("position"))
+            title = title or _txt(it.get("headline"))
+            if company:
+                f["company"] = company.strip()[:80]
+            if title:
+                f["headline"] = title.strip()[:120]   # le METIER reel (-> jobtitle HubSpot)
+                f["job_title"] = title.strip()[:120]
+        return found
 
     def _parse_harvest(self, items, limit) -> list[dict]:
         out = []
@@ -259,7 +309,7 @@ class ApifyLinkedIn:
                 "id": pid, "full_name": f["full_name"], "headline": f.get("headline", ""),
                 "company": f.get("company", ""), "profile_url": f.get("profile_url", ""),
                 "attributes": {"region": f.get("region", ""), "profile_url": f.get("profile_url", ""),
-                               "summary": f.get("summary", ""),
+                               "summary": f.get("summary", ""), "job_title": f.get("job_title", ""),
                                "source": "Apify (profil reel, taille d'ecole a confirmer)"},
             })
         return prospects
