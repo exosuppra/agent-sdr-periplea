@@ -4,16 +4,18 @@ Candidat : Quentin Duroy. Poste : Growth Hacker IA-First. Produit pitché : Meet
 
 ## 1. Framework
 
-Python + Claude (tool use) en boucle d'agent : observer l'état, décider une action, l'exécuter via un outil, mémoriser, recommencer. Choix d'une boucle simple et lisible plutôt qu'un framework lourd (LangGraph, CrewAI) ou un no-code (Lindy), car c'est cette lisibilité de la décision qui se défend en démo. Le LLM est le planificateur : à chaque cycle il reçoit tout l'état (pipeline, conversations, actions passées) et choisit une action parmi 11 outils, avec un `rationale` obligatoire (trace de décision). Aucun template : chaque message est rédigé par le LLM.
+Python et l'API Claude (Anthropic), en boucle d'agent à outils (tool use) : observer l'état, décider une action, l'exécuter via un outil, mémoriser, recommencer. Choix d'une boucle simple et lisible plutôt qu'un framework lourd (LangGraph, CrewAI) ou un no-code (Lindy), car c'est cette lisibilité de la décision qui se défend en démo. Le LLM est le planificateur : à chaque cycle il reçoit tout l'état (pipeline, conversations, actions passées) et choisit une action parmi 11 outils, avec un `rationale` obligatoire (trace de décision). Aucun template : chaque message est rédigé par le LLM.
 
 ## 2. Outils (architecture ports/adaptateurs)
 
 Le cerveau ne connaît que des interfaces ; dessous, on branche soit des outils simulés (mode `mock`, démo sans risque), soit les vrais services (mode `live`), sans toucher au cerveau.
 
-- LinkedIn : Unipile (session authentifiée du compte, pas de scraping cloud).
-- Agenda : Cal.com API v2 (gratuit).
+- LinkedIn : Unipile (session authentifiée du compte, pas de scraping cloud ; choix justifié juste en dessous).
+- Agenda : Cal.com API v2 (gratuit), relié à Google Agenda pour l'exercice : les RDV pris apparaissent directement dans l'agenda.
 - CRM : HubSpot, application privée (gratuit) : contacts, notes, deals.
-- Cerveau et mémoire : Claude + SQLite.
+- Cerveau et mémoire : API Claude (Anthropic) + SQLite.
+
+Pourquoi Unipile plutôt que PhantomBuster ou un outil cloud du même type : Unipile est une API d'infrastructure qui relaie l'action dans la session authentifiée du compte, avec un proxy dédié par compte. On évite ainsi l'IP datacenter partagée entre des centaines de comptes (le signal exact qui a fait bannir HeyReach en mars 2026) et l'empreinte synthétique d'un PhantomBuster qui rejoue des scripts depuis son propre cloud. Surtout, c'est une API et non un produit clé en main : on garde la maîtrise de la logique de l'agent (notre code, nos règles), au lieu de dépendre d'automatisations préfabriquées. En prime, Unipile est multi-canal (LinkedIn, email, WhatsApp) avec la même interface, ce qui ouvre l'omnicanal sans réécrire le cerveau.
 
 ## 3. Mémoire
 
@@ -24,7 +26,7 @@ SQLite, un seul fichier, trois tables : `prospects` (machine à états NEW vers 
 Aucun outil d'automatisation n'est conforme aux CGU de LinkedIn (art. 8.2). La posture honnête est la minimisation du risque, pas la conformité.
 
 - Sourcing découplé du compte : via Apify (`site:linkedin.com/in`), sans login ni cookie LinkedIn. La phase la plus volumineuse n'expose aucun compte. En échange : données de surface, et risque reporté sur les CGU de Google.
-- Envoi via Unipile : seul l'envoi touche le compte, dans sa session authentifiée, pattern moins détectable qu'un outil cloud à IP partagée (type HeyReach, dont LinkedIn a banni la page et les profils dirigeants en mars 2026, justement pour cette infrastructure partagée). Dès la 1re invitation le compte est exposé : on réduit la fréquence, on ne supprime pas le risque.
+- Envoi via Unipile (choix détaillé en section 2) : seul l'envoi touche réellement le compte. Dès la 1re invitation le compte est exposé : on réduit la fréquence, on ne supprime pas le risque.
 - Cadence prudente persistée en base : de l'ordre de 100 invitations par semaine, espacées aléatoirement, warm-up 30 jours pour un compte neuf. Prochaine étape : une boucle de rétroaction sur le taux d'acceptation avec kill-switch.
 - Messages tous générés par le LLM : pas de template identique, principal déclencheur de bannissement.
 - Dégradation propre : panne d'un outil ou du LLM gérée sans planter (file de reprise CRM, arrêt après 3 échecs consécutifs, filet de sécurité par cycle, coupe-circuit anti-boucle) ; `chaos.json` coupe un outil en direct pour le démontrer.
