@@ -56,6 +56,17 @@ def _txt(v) -> str:
     return v if isinstance(v, str) else ""
 
 
+# Detecte un intitule de poste (a ne pas confondre avec un nom d'ecole).
+_ROLE_RE = re.compile(
+    r"^(responsable|directeur|directrice|charg|chef|manager|head|consultant|adjoint|"
+    r"assistant|coordinat|gestionnaire|conseill|attach|r[eé]f[eé]rent|animat|d[eé]l[eé]gu|"
+    r"president|pr[eé]sident|fondat|founder|ceo|cto|cmo|chro|dg\b|drh\b)", re.I)
+
+
+def _looks_like_role(s: str) -> bool:
+    return bool(_ROLE_RE.match((s or "").strip()))
+
+
 class ApifyLinkedIn:
     def __init__(self, settings):
         if not settings.apify_token:
@@ -161,6 +172,13 @@ class ApifyLinkedIn:
                 # ("Nom - Poste - Ecole"), pas le 2e (qui est souvent l'intitule de poste).
                 company = parts[-1] if len(parts) > 1 else ""
                 desc = _txt(r.get("description"))
+                # mais si le dernier segment est en fait un INTITULE DE POSTE (titre
+                # "Nom - Poste" sans segment ecole), on ne le prend pas pour l'ecole :
+                # on tente "chez X" / "at X" dans la description, sinon on laisse vide.
+                if company and _looks_like_role(company):
+                    m = (re.search(r"\bchez\s+([^,.|·\n]+)", desc, re.I)
+                         or re.search(r"\bat\s+([A-Z][^,.|·\n]+)", desc))
+                    company = m.group(1).strip() if m else ""
                 headline = desc[:140] or (" - ".join(parts[1:]))
                 out.append({"full_name": name, "headline": headline, "company": company,
                             "profile_url": url, "region": "", "summary": desc})

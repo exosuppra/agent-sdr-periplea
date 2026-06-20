@@ -16,6 +16,13 @@ JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"
 MOIS = ["", "janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet",
         "aout", "septembre", "octobre", "novembre", "decembre"]
 
+# Battement entre deux RDV : on laisse 30 min LIBRES entre la fin d'un RDV et le
+# debut du suivant. Un RDV dure 30 min, donc deux debuts de RDV doivent etre
+# espaces d'au moins 60 min (30 de RDV + 30 de battement).
+DUREE_RDV_MIN = 30
+BATTEMENT_MIN = 30
+ECART_MIN_DEBUTS = DUREE_RDV_MIN + BATTEMENT_MIN  # 60
+
 
 # ---------- fuseau Europe/Paris (sans dependance tzdata) ----------
 def _eu_summer_time(dt_utc: datetime) -> bool:
@@ -70,6 +77,31 @@ def list_free_slots(calendar, days: int = 28, limit: int = 300) -> list[dict]:
             continue
         out.append({"id": s["id"], "paris": dt, "label": _label(dt)})
     out.sort(key=lambda x: x["paris"])
+    return out
+
+
+def drop_buffered(raw_slots: list[dict], busy_isos, ecart_min: int = ECART_MIN_DEBUTS) -> list[dict]:
+    """Retire les creneaux trop proches d'un RDV deja pris, pour garantir un
+    battement libre entre deux RDV. `busy_isos` = heures de debut (ISO) des RDV
+    existants. Un creneau est ecarte si son debut est a moins de `ecart_min`
+    minutes du debut d'un RDV existant (avant OU apres)."""
+    busy = []
+    for b in (busy_isos or []):
+        try:
+            busy.append(_slot_paris({"start": b}))
+        except Exception:
+            pass
+    if not busy:
+        return raw_slots
+    out = []
+    for s in raw_slots:
+        try:
+            dt = _slot_paris(s)
+        except Exception:
+            out.append(s)  # on ne sait pas situer ce creneau : on ne le bloque pas
+            continue
+        if all(abs((dt - b).total_seconds()) >= ecart_min * 60 for b in busy):
+            out.append(s)
     return out
 
 

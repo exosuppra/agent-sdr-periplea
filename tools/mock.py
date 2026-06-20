@@ -23,6 +23,7 @@ from datetime import datetime, timedelta
 
 from chaos import tool_is_down
 from .base import ToolUnavailable, ToolError
+from .chat_booking import drop_buffered
 
 
 CLIENTS = {"ESSCA", "Excelia", "OMNES", "Institut Lyfe", "ESCP"}
@@ -284,6 +285,9 @@ class MockCalendar:
     def get_slots(self, within_days: int = 14, limit: int = 5) -> list[dict]:
         self._check()
         avail = [s for s in self._slots if s["id"] not in self.booked]  # exclut les creneaux pris
+        # battement : ecarte les creneaux trop proches d'un RDV deja pris
+        busy = [s["start"] for s in self._slots if s["id"] in self.booked]
+        avail = drop_buffered(avail, busy)
         return avail[:limit]
 
     def book(self, prospect: dict, slot_id: str, attendee_email: str) -> dict:

@@ -19,7 +19,7 @@ import requests
 
 from chaos import tool_is_down
 from .base import ToolUnavailable, RateLimited, ToolError
-from .chat_booking import human_label
+from .chat_booking import human_label, drop_buffered
 
 BASE = "https://api.cal.com/v2"
 JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
@@ -72,16 +72,33 @@ class CalComCalendar:
                 if not iso:
                     continue
                 slots.append({"id": iso, "start": iso, "label": human_label(iso)})
-                if len(slots) >= limit:
-                    return slots
-        return slots
+        # battement : on ecarte les creneaux trop proches d'un RDV deja pris,
+        # puis on applique la limite (filtrer AVANT de couper).
+        slots = drop_buffered(slots, self._upcoming_starts())
+        return slots[:limit]
+
+    def _upcoming_starts(self) -> list[str]:
+        """Heures de debut (ISO) des RDV a venir, pour menager un battement entre RDV."""
+        try:
+            r = requests.get(f"{self.base}/bookings", headers=self._headers("2024-08-13"),
+                             params={"status": "upcoming", "take": 100}, timeout=20)
+            items = self._handle(r).get("data", []) or []
+        except Exception:
+            return []  # en cas de souci, on ne bloque pas la prise de RDV
+        return [b.get("start", "") for b in items if isinstance(b, dict) and b.get("start")]
 
     def book(self, prospect: dict, slot_id: str, attendee_email: str) -> dict:
         self._check()
+        # Titre du RDV = "RDV etablissement/contact". Cal.com n'accepte pas de titre
+        # par reservation : on le pilote via le modele du type d'evenement
+        # (customName="RDV {Scheduler}") et {Scheduler} = ce nom d'invite.
+        name = prospect.get("full_name", "Prospect")
+        estab = (prospect.get("company") or "").strip()
+        attendee_name = f"{estab}/{name}" if estab else name
         body = {
             "start": slot_id,  # l'id du creneau EST son heure ISO (UTC)
             "eventTypeId": self.event_type_id,
-            "attendee": {"name": prospect.get("full_name", "Prospect"),
+            "attendee": {"name": attendee_name,
                          "email": attendee_email or self.owner_email,
                          "timeZone": "Europe/Paris"},
         }
