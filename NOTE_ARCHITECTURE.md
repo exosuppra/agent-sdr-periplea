@@ -34,7 +34,8 @@ Aucun outil d'automatisation n'est conforme aux CGU de LinkedIn (art. 8.2). La p
 
 ## 5. Économie unitaire
 
-- LLM : environ 30 appels Claude Sonnet pour le parcours de démo, soit de l'ordre de 0,10 à 0,15 € par RDV (estimation). Levier : Haiku sur les étapes routinières, Sonnet sur la rédaction.
+- Sourcing (Apify) : plan gratuit de 5 $ de crédit par mois ; l'acteur de recherche coûte de l'ordre de 0,001 à 0,002 $ par page (environ 10 profils). Sourcer 400 prospects par mois reste dans le crédit gratuit (quelques dizaines de centimes au plus), donc négligeable.
+- LLM (Claude) : environ 30 appels Sonnet pour le parcours de démo, soit de l'ordre de 0,10 à 0,15 € par RDV (estimation). Levier : Haiku sur les étapes routinières, Sonnet sur la rédaction.
 - Outils : Unipile à partir de 49 €/mois (jusqu'à 10 comptes connectés, +5 €/compte au-delà, requêtes illimitées) ; HubSpot et Cal.com gratuits.
 - Coût par RDV dominé par Unipile, de l'ordre de 1 € par RDV à 50 RDV/mois, décroissant quand le volume monte.
 
