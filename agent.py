@@ -854,12 +854,19 @@ class Orchestrator:
         p = self.mem.get_prospect(pid)
         if p:
             return p
-        norm = lambda s: re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
-        toks = [t for t in norm(pid).split() if len(t) > 1]
-        if not toks:
+        # Le LLM n'arrive pas a recopier un id a suffixe de hash : il ecrit par ex.
+        # 'licorinne_seguin_46a28865' (il fusionne 'li' et 'corinne') au lieu de
+        # 'li__corinne_seguin_46a28865'. On retrouve donc le prospect par son NOM :
+        # tous les mots du nom doivent apparaitre dans l'id fourni, mis a plat.
+        flat = re.sub(r"[^a-z0-9]", "", (pid or "").lower())
+        if not flat:
             return None
-        cands = [q for q in self.mem.list_prospects()
-                 if all(t in (norm(q["id"]) + " " + norm(q["full_name"])) for t in toks)]
+        cands = []
+        for q in self.mem.list_prospects():
+            toks = [re.sub(r"[^a-z0-9]", "", t) for t in (q["full_name"] or "").lower().split()]
+            toks = [t for t in toks if len(t) > 2]
+            if toks and all(t in flat for t in toks):
+                cands.append(q)
         return cands[0] if len(cands) == 1 else None
 
     _NEEDS_PROSPECT = {"get_profile", "check_client_base", "record_qualification",
