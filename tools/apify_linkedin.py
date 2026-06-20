@@ -76,6 +76,9 @@ def _looks_like_role(s: str) -> bool:
 _EXP_RE = re.compile(r"exp.rience\s*:\s*([^·|\n]+)", re.I)
 _CHEZ_RE = re.compile(r"\b(?:chez|au sein d[eu’'][^A-Za-z0-9]*l?[’']?)\s*([^,.·|\n]+)", re.I)
 _ALECOLE_RE = re.compile(r"\b[aà]\s+l[’']\s*([A-ZÉÈ][^,.·|\n]+)")
+# mots de SERVICE/DEPARTEMENT (jamais dans un nom d'ecole) : si le candidat en contient un,
+# c'est un intitule de poste/service, pas un etablissement.
+_DEPT_RE = re.compile(r"admission|promotion|recrutement|concours|candidat|scolarit|career|d[eé]veloppement", re.I)
 
 
 def _extract_company(parts, desc: str) -> str:
@@ -90,8 +93,8 @@ def _extract_company(parts, desc: str) -> str:
         cand = parts[-1]  # dernier segment du titre, s'il n'est pas un intitule de poste
     # coupe a la 1re separation (·, |, ellipse, fin de phrase, virgule) ; garde les " - "
     cand = re.split(r"\s*·\s*|\s*\|\s*|…|\.\.\.|\.\s|,\s", cand)[0].strip(" -")
-    if _looks_like_role(cand):
-        cand = ""  # garde-fou : jamais un intitule de poste comme etablissement
+    if _looks_like_role(cand) or _DEPT_RE.search(cand):
+        cand = ""  # garde-fou : jamais un intitule de poste/service comme etablissement
     return cand[:80]
 
 
