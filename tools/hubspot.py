@@ -37,6 +37,11 @@ class HubSpotCrm:
         self.h = {"Authorization": f"Bearer {settings.hubspot_token}",
                   "Content-Type": "application/json"}
         self.map = json.load(open(MAP_FILE, encoding="utf-8")) if os.path.exists(MAP_FILE) else {}
+        # On NE reutilise PAS les ids d'entreprises memorises lors d'une session passee :
+        # une fiche entreprise a pu etre archivee ou supprimee depuis (corbeille HubSpot),
+        # et on relierait alors un nouveau contact a une fiche archivee. On les re-resout
+        # en direct a chaque run (la recherche HubSpot exclut les archivees).
+        self.map.pop("_companies", None)
         self.owner_email = getattr(settings, "owner_email", "") or ""
         self._owner = "?"        # "?" = pas encore recupere ; sinon id owner ou None
         self._lead_opts = None   # valeurs valides de hs_lead_status (cache)
