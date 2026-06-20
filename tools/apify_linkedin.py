@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
 import requests
 
@@ -193,8 +194,17 @@ class ApifyLinkedIn:
             if key and key in self.returned:
                 continue  # deja remonte lors d'une recherche precedente
             self.returned.add(key)
-            slug = re.sub(r"[^a-z0-9]+", "_", (f.get("profile_url") or f["full_name"]).lower())[-24:]
-            pid = "li_" + (slug or str(i))
+            # Id PROPRE et reproductible, fabrique depuis le NOM (sans accents) et non
+            # depuis la fin de l'URL : le LLM doit pouvoir le recopier a l'identique.
+            # (Ex. li_corinne_seguin, pas li__corinne_seguin_46a28865.)
+            raw = f.get("full_name") or str(i)
+            ascii_name = unicodedata.normalize("NFKD", raw).encode("ascii", "ignore").decode()
+            base = re.sub(r"[^a-z0-9]+", "_", ascii_name.lower()).strip("_") or str(i)
+            pid = "li_" + base
+            n = 2
+            while pid in self.directory:   # unicite en cas d'homonyme
+                pid = f"li_{base}_{n}"
+                n += 1
             self.directory[pid] = f
             self.scripts[pid] = SCRIPTS[i % len(SCRIPTS)]
             prospects.append({

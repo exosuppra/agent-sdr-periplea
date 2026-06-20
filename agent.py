@@ -265,6 +265,10 @@ REGLES IMPERATIVES :
   reponse (alors mark_no_response).
 - Si un outil est indique INDISPONIBLE, n'insiste pas dessus : travaille sur d'autres
   prospects et il sera reessaye plus tard.
+- AUTO-REPARATION (tu es autonome) : si une action echoue (resultat commencant par ECHEC),
+  NE la repete JAMAIS a l'identique. Lis le message d'erreur et corrige (par ex. recopie un
+  id valide EXACT tel qu'il est affiche), ou si l'etape reste bloquee, passe a un AUTRE
+  prospect. Debloque-toi seul, sans attendre une intervention humaine.
 - Ton professionnel, vouvoiement, concis, credible aupres d'un directeur d'ecole. En francais.
 - ADRESSE-TOI au prospect par sa civilite et son NOM DE FAMILLE : "Bonjour Madame Seguin", "Bonjour Monsieur Dupont". JAMAIS le prenom seul. Deduis Madame ou Monsieur du prenom ; en cas de doute reel sur le genre, ecris simplement "Bonjour" suivi du prenom et du nom, sans civilite.
 - N'utilise JAMAIS le tiret cadratin (—) ni le tiret demi-cadratin (–) : ecris avec des virgules, des deux-points, des parentheses ou des phrases courtes.
@@ -458,6 +462,16 @@ def render_snapshot(s: dict) -> str:
             lines.append("OUTILS INDISPONIBLES : " + ", ".join(downs) + " (a eviter pour l'instant).")
     if s["can_search"]:
         lines.append("Tu peux appeler search_prospects pour trouver de nouveaux prospects.")
+    sr = s.get("self_repair")
+    if sr:
+        lines.append("")
+        lines.append(f"AUTO-CORRECTION : ta derniere action `{sr['action']}` sur {sr['target']} a ECHOUE.")
+        lines.append(f"  Message d'erreur : {sr['result']}")
+        if sr.get("count", 1) >= 2:
+            lines.append("  Tu as deja echoue plusieurs fois sur ce point : NE refais SURTOUT PAS la meme chose. "
+                         "Corrige (par ex. recopie un id EXACT de la liste des prospects ci-dessous) OU passe a un AUTRE prospect.")
+        else:
+            lines.append("  Ne repete pas cette action a l'identique : lis le message, corrige le tir, ou change d'approche.")
     if s.get("recent_actions"):
         lines.append("")
         lines.append("TES DERNIERES ACTIONS (ne les repete pas inutilement) :")
@@ -511,12 +525,14 @@ class Orchestrator:
         self.profiled: set[str] = set()        # anti-boucle get_profile
         self.client_checked: set[str] = set()  # anti-boucle check_client_base
         self.finder = EmailFinder(settings)    # enrichissement email optionnel (no-op sans cle)
-        # Coupe-circuit anti-boucle : si la MEME action echoue en boucle (ex. un id
-        # introuvable que le LLM repete), on met le prospect de cote, et si plus rien
-        # n'avance du tout on s'arrete proprement au lieu de tourner sans fin.
+        # AUTO-REPARATION : un echec est renvoye au cerveau (champ self_repair du
+        # snapshot) pour qu'il se corrige seul au cycle suivant. Les compteurs ci-dessous
+        # ne servent qu'aux garde-fous de DERNIER recours (mise de cote, arret propre).
         self._fail_sig: str | None = None
         self._fail_count = 0
         self._stuck = 0
+        self._last_fail: dict | None = None      # dernier echec, expose au cerveau
+        self._skip_run: set[str] = set()          # prospects mis de cote pour CETTE session
 
     # ---- horloge (mock = ticks ; live = temps reel) ----
     def _now(self) -> float:
@@ -665,31 +681,38 @@ class Orchestrator:
                 self.trace.decision(cycle, p_after or p_before, rationale, action, args, result)
                 self.mem.log_decision(cycle, pid, observation, rationale, action, args, result)
 
-                # COUPE-CIRCUIT : empeche toute boucle infinie sur une action qui echoue.
+                # AUTO-REPARATION : l'echec est renvoye au cerveau (champ self_repair du
+                # snapshot, rendu en evidence) pour qu'il se corrige SEUL au cycle suivant.
+                # Les garde-fous deterministes ci-dessous ne servent qu'en DERNIER recours.
                 failed = isinstance(result, str) and result.startswith("ECHEC")
                 if not failed:
                     self._fail_sig = None
                     self._fail_count = 0
                     self._stuck = 0
+                    self._last_fail = None
                 else:
                     self._stuck += 1
                     sig = f"{action}:{pid}"
                     self._fail_count = self._fail_count + 1 if sig == self._fail_sig else 1
                     self._fail_sig = sig
-                    # 3 fois la MEME action en echec sur le MEME prospect : on le met de cote
-                    # (avec note) pour ne pas bloquer la campagne, puis on repart.
-                    if self._fail_count >= 3 and p_after:
-                        self.mem.update_prospect(p_after["id"], state=M.DISQUALIFIED, awaiting_reply=0)
-                        self._crm_safe(f"note blocage {p_after['id']}",
-                                       lambda pid=p_after["id"], a=action: self.crm.log_note(
-                                           pid, f"Mis de cote : l'etape '{a}' a echoue 3 fois (incident technique)."))
-                        self.trace.event("INCIDENT REPETE",
-                                         f"{p_after['full_name']} : '{action}' echoue 3 fois, prospect mis de cote pour ne pas bloquer.")
+                    tgt = p_after or p_before
+                    self._last_fail = {"action": action, "result": result,
+                                       "target": tgt["full_name"] if tgt else (pid or "-"),
+                                       "count": self._fail_count}
+                    # Backstop 1 : si le cerveau n'arrive pas a se corriger apres 3 essais
+                    # sur le MEME prospect, on le met de cote POUR CETTE SESSION (sans le
+                    # disqualifier : il sera reessaye lors d'une prochaine campagne) et on avance.
+                    if self._fail_count >= 3 and pid:
+                        self._skip_run.add(pid)
+                        self.trace.event("AUTO-CORRECTION",
+                                         f"{self._last_fail['target']} : '{action}' a echoue {self._fail_count} fois ; "
+                                         "mis de cote pour cette session, on passe au prospect suivant.")
                         self._fail_sig = None
                         self._fail_count = 0
-                    # blocage global : 6 cycles d'affilee sans la moindre action reussie.
-                    if self._stuck >= 6:
-                        self.trace.event("FIN", "blocage persistant detecte (aucune action ne reussit), arret propre.")
+                        self._last_fail = None
+                    # Backstop 2 : si VRAIMENT plus rien ne reussit, arret propre.
+                    if self._stuck >= 8:
+                        self.trace.event("FIN", "blocage persistant (aucune action ne reussit), arret propre.")
                         break
             except Exception as e:
                 # FILET DE SECURITE : un incident inattendu dans un cycle ne doit JAMAIS
@@ -767,6 +790,8 @@ class Orchestrator:
     def _build_snapshot(self, icp: str) -> dict:
         actionable, inflight = [], False
         for p in self.mem.list_prospects(M.OPEN_STATES):
+            if p["id"] in self._skip_run:
+                continue  # mis de cote pour cette session (incident technique repete)
             due = self._is_due(p)
             if self.read_only:
                 act = (p["state"] == M.NEW)  # observation : on s'arrete apres la qualification
@@ -806,6 +831,7 @@ class Orchestrator:
             "can_search": (not self.no_more_prospects) and (not self.resume_only),
             "tools_status": dict(self.tool_status),
             "recent_actions": recent,
+            "self_repair": self._last_fail,
         }
 
     def _observe(self, p: dict | None, snapshot: dict) -> str:
