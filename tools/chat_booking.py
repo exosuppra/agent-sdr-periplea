@@ -127,9 +127,14 @@ def _match(slots: list[dict], req: datetime):
 
 def _soonest(slots: list[dict], req, n: int = 5) -> list[dict]:
     if req:
-        same = [s for s in slots if s["paris"].date() == req.date()]
-        rest = [s for s in slots if s["paris"].date() != req.date()]
-        ordered = same + rest
+        # priorite : meme date exacte, PUIS meme jour de semaine (ex. le prospect veut "un
+        # mercredi" -> on remonte d'autres mercredis), PUIS le reste chronologique. Sinon
+        # un creneau d'un jour demande passerait inapercu derriere les creneaux les plus proches.
+        same_date = [s for s in slots if s["paris"].date() == req.date()]
+        same_wday = [s for s in slots if s["paris"].date() != req.date()
+                     and s["paris"].weekday() == req.weekday()]
+        rest = [s for s in slots if s["paris"].weekday() != req.weekday()]
+        ordered = same_date + same_wday + rest
     else:
         ordered = slots
     return ordered[:n]
