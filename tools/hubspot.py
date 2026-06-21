@@ -212,9 +212,12 @@ class HubSpotCrm:
             self.map.pop(prospect["id"], None)
             self._save()
         attrs = prospect.get("attributes") or {}
-        parts = (prospect.get("full_name") or "").split(" ", 1)
-        firstname = parts[0]
-        lastname = parts[1] if len(parts) > 1 else ""
+        # Decoupage prenom/nom robuste : on neutralise les virgules parasites des noms
+        # scrapes (ex. "Skander, Alexandre KLILA") pour ne pas se retrouver avec un
+        # prenom "Skander," dans HubSpot.
+        toks = (prospect.get("full_name") or "").replace(",", " ").split()
+        firstname = toks[0] if toks else ""
+        lastname = " ".join(toks[1:]) if len(toks) > 1 else ""
         company = prospect.get("company", "")
         url = attrs.get("profile_url") or prospect.get("profile_url", "")
         # DEDUP HubSpot : si le contact existe DEJA (meme nom + ecole), on le REUTILISE
