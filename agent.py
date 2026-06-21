@@ -270,7 +270,7 @@ REGLES IMPERATIVES :
   id valide EXACT tel qu'il est affiche), ou si l'etape reste bloquee, passe a un AUTRE
   prospect. Debloque-toi seul, sans attendre une intervention humaine.
 - Ton professionnel, vouvoiement, concis, credible aupres d'un directeur d'ecole. En francais.
-- ADRESSE-TOI au prospect par sa civilite et son NOM DE FAMILLE : "Bonjour Madame Seguin", "Bonjour Monsieur Dupont". JAMAIS le prenom seul. Deduis Madame ou Monsieur du prenom ; en cas de doute reel sur le genre, ecris simplement "Bonjour" suivi du prenom et du nom, sans civilite.
+- ADRESSE-TOI au prospect par sa civilite et son NOM DE FAMILLE (Madame/Monsieur Nom), jamais le prenom seul. Mais SALUE ("Bonjour Madame Seguin") UNIQUEMENT dans le TOUT PREMIER message. Dans les messages SUIVANTS de la meme conversation, ne recommence PAS par "Bonjour Madame X" : enchaine directement sur le fond (tu peux glisser "Madame Seguin" de temps en temps, mais sans "Bonjour" a chaque fois). Deduis Madame ou Monsieur du prenom ; en cas de doute reel sur le genre, pas de civilite (juste le prenom et le nom).
 - N'utilise JAMAIS le tiret cadratin (—) ni le tiret demi-cadratin (–) : ecris avec des virgules, des deux-points, des parentheses ou des phrases courtes.
 - Tes MESSAGES aux prospects sont en TEXTE SIMPLE : aucune mise en forme markdown (pas de gras avec des asterisques, pas de listes a puces) car LinkedIn ne rend pas le markdown.
 
@@ -1359,9 +1359,10 @@ def chat_reply(settings, profile: str, history: list, message: str, calendar=Non
         "professionnel (obligatoire pour l'invitation) et son telephone (pour confirmer) ; confirme une "
         "fois que tu as au moins l'email. Ne donne jamais de prix ferme sans cadrer un "
         "echange. Ton professionnel, vouvoiement, concis (2 a 4 phrases). En francais. "
-        "Adresse-toi au prospect par sa civilite et son NOM DE FAMILLE ('Bonjour Madame Seguin', "
-        "'Bonjour Monsieur Dupont'), jamais par son prenom seul ; deduis Madame ou Monsieur du prenom, "
-        "et en cas de doute reel sur le genre ecris 'Bonjour' suivi du prenom et du nom, sans civilite. "
+        "Adresse-toi au prospect par sa civilite et son nom de famille (Madame/Monsieur Nom), jamais par "
+        "le prenom seul, mais SALUE ('Bonjour Madame Seguin') UNIQUEMENT dans ton premier message ; dans "
+        "les reponses suivantes ne repete pas 'Bonjour Madame X', enchaine directement sur le fond. Deduis "
+        "la civilite du prenom, et en cas de doute reel sur le genre n'en mets pas (juste prenom et nom). "
         "N'utilise jamais le tiret cadratin, ni de champ entre crochets type [Prenom] ou [Ecole] : "
         "si tu ne connais pas un detail, formule sans, de facon naturelle. Ecris en TEXTE SIMPLE, "
         "sans mise en forme markdown (pas de gras avec des asterisques) : LinkedIn ne l'affiche pas. "
