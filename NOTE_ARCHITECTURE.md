@@ -34,7 +34,7 @@ Aucun outil d'automatisation n'est conforme aux CGU de LinkedIn (art. 8.2). La p
 
 ## 5. Économie unitaire
 
-- Sourcing (Apify) : plan gratuit de 5 $ de crédit par mois. Recherche d'environ 0,001 à 0,002 $ par page (10 profils), puis enrichissement de profil d'environ 0,01 $ par prospect (entreprise, poste et email pro vérifié). Pour 400 prospects par mois, de l'ordre de 4 à 5 $.
+- Sourcing (Apify) : la recherche Google (`site:linkedin.com/in`) tourne sur le plan gratuit, environ 0,001 à 0,002 $ par page (10 profils). L'enrichissement de profil (acteur harvestapi : entreprise, poste, email pro vérifié) suppose un plan Apify payant, car le plan gratuit ne laisse que 10 exécutions de cet acteur (assez pour tester, pas pour une campagne). Le coût d'usage reste d'environ 0,01 $ par prospect, soit de l'ordre de 4 à 5 $ pour 400 prospects par mois, couvert par les crédits d'usage inclus dans l'abonnement.
 - LLM (Claude) : environ 30 appels Sonnet pour le parcours de démo, soit de l'ordre de 0,10 à 0,15 € par RDV (estimation). Levier : Haiku sur les étapes routinières, Sonnet sur la rédaction.
 - Outils : Unipile à partir de 49 €/mois (jusqu'à 10 comptes connectés, +5 €/compte au-delà, requêtes illimitées) ; HubSpot et Cal.com gratuits.
 - Coût par RDV dominé par Unipile, de l'ordre de 1 € par RDV à 50 RDV/mois, décroissant quand le volume monte.
