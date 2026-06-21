@@ -300,6 +300,7 @@ class ApifyLinkedIn:
                 "company": f.get("company", ""), "profile_url": f.get("profile_url", ""),
                 "attributes": {"region": f.get("region", ""), "profile_url": f.get("profile_url", ""),
                                "summary": f.get("summary", ""), "job_title": f.get("job_title", ""),
+                               "email": f.get("email", ""),  # email pro REEL verifie (enrichissement)
                                "source": "Apify (profil reel)"},
             })
         return prospects

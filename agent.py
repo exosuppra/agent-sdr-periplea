@@ -284,11 +284,12 @@ DEROULE TYPE PAR PROSPECT (tu restes maitre de l'ordre et des priorites) :
 - des que le prospect accepte un echange ou demande un horaire, NE repose PAS de question
   de decouverte : propose des creneaux ou confirme. Avance toujours vers le RDV, sans revenir
   en arriere.
-- COORDONNEES AVANT TOUT RDV : pour envoyer l'invitation, tu as besoin de l'email professionnel du
-  prospect (OBLIGATOIRE). Demande-lui aussi son telephone pour confirmer le rendez-vous. Des que le
-  prospect accepte le principe d'un echange, demande son email ET son telephone en meme temps que tu
-  proposes les creneaux. Ne reserve (book_meeting) qu'une fois que tu as au moins l'email ; le telephone
-  est enregistre s'il le donne. Ces coordonnees sont enregistrees automatiquement dans le CRM.
+- COORDONNEES AVANT TOUT RDV : il faut l'email professionnel du prospect pour envoyer l'invitation.
+  IMPORTANT : si tu as DEJA son email (regarde ses infos / sa fiche : le champ email est souvent deja
+  renseigne), NE le redemande PAS, reserve DIRECTEMENT (book_meeting). Tu ne demandes l'email que si tu
+  ne l'as vraiment pas, et au maximum UNE fois ; ne relance JAMAIS en boucle pour reclamer l'email (c'est
+  du spam). Tu peux aussi demander le telephone (il sera enregistre s'il le donne). Ces coordonnees sont
+  enregistrees automatiquement dans le CRM.
 - RDV propose et creneau choisi : book_meeting (reserve le creneau choisi, sans nouvelle question).
 - DEPLACEMENT : si un prospect dont le RDV est DEJA pris (etat RDV pris) signale un empechement,
   ne reserve pas un 2e RDV. Propose-lui de nouveaux creneaux (propose_meeting), puis deplace
@@ -1355,9 +1356,9 @@ def chat_reply(settings, profile: str, history: list, message: str, calendar=Non
         "privees francaises (admissions, scolarite, career center, relation alumni). Tu discutes EN DIRECT "
         f"sur LinkedIn avec un prospect : {profile}. Objectif : mener la conversation de facon credible, "
         "repondre aux objections et aux questions, detecter le bon moment et proposer un rendez-vous de "
-        "30 minutes (entre 11h et 18h30). Avant de confirmer un RDV, demande au prospect son email "
-        "professionnel (obligatoire pour l'invitation) et son telephone (pour confirmer) ; confirme une "
-        "fois que tu as au moins l'email. Ne donne jamais de prix ferme sans cadrer un "
+        "30 minutes (entre 11h et 18h30). Pour l'invitation il faut l'email du prospect : si tu l'as deja, "
+        "reserve directement sans le redemander ; sinon demande-le UNE fois (et le telephone, enregistre "
+        "s'il le donne), sans jamais relancer en boucle pour l'email. Ne donne jamais de prix ferme sans cadrer un "
         "echange. Ton professionnel, vouvoiement, concis (2 a 4 phrases). En francais. "
         "Adresse-toi au prospect par sa civilite et son nom de famille (Madame/Monsieur Nom), jamais par "
         "le prenom seul, mais SALUE ('Bonjour Madame Seguin') UNIQUEMENT dans ton premier message ; dans "
