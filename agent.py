@@ -38,6 +38,25 @@ def _clean_text(s):
     return s.replace("—", "-").replace("–", "-").replace("**", "").replace("__", "")
 
 
+# Salutation d'ouverture (Bonjour Madame X, / Monsieur X.) : on ne salue qu'au PREMIER
+# message d'une conversation. Ce nettoyage la retire DETERMINISTE-ment des messages suivants.
+_GREETING_RE = re.compile(
+    r"^\s*(?:bonjour|bonsoir|re-?bonjour)?[\s,]*"
+    r"(?:madame|monsieur|mme|mr|m\.)\s+[A-Za-zÀ-ÿ][\w'’.\-]*(?:[\s-]+[A-Za-zÀ-ÿ][\w'’.\-]*){0,2}\s*[,.:!]+\s*",
+    re.I)
+
+
+def _strip_greeting(text):
+    """Retire une salutation d'ouverture en debut de message (Bonjour Madame X, ...)."""
+    if not isinstance(text, str):
+        return text
+    m = _GREETING_RE.match(text)
+    if not m:
+        return text
+    rest = text[m.end():].lstrip()
+    return (rest[0].upper() + rest[1:]) if rest else text
+
+
 # Marqueurs indiquant que l'agent a DEJA acte l'arret du contact -> conversation close.
 _CLOSURE_MARKERS = ("recontacterai plus", "recontacterons plus", "ne plus vous contacter",
                     "ne vous solliciterai plus", "je vous retire", "vous retire de mes",
@@ -284,12 +303,10 @@ DEROULE TYPE PAR PROSPECT (tu restes maitre de l'ordre et des priorites) :
 - des que le prospect accepte un echange ou demande un horaire, NE repose PAS de question
   de decouverte : propose des creneaux ou confirme. Avance toujours vers le RDV, sans revenir
   en arriere.
-- COORDONNEES AVANT TOUT RDV : il faut l'email professionnel du prospect pour envoyer l'invitation.
-  IMPORTANT : si tu as DEJA son email (regarde ses infos / sa fiche : le champ email est souvent deja
-  renseigne), NE le redemande PAS, reserve DIRECTEMENT (book_meeting). Tu ne demandes l'email que si tu
-  ne l'as vraiment pas, et au maximum UNE fois ; ne relance JAMAIS en boucle pour reclamer l'email (c'est
-  du spam). Tu peux aussi demander le telephone (il sera enregistre s'il le donne). Ces coordonnees sont
-  enregistrees automatiquement dans le CRM.
+- RDV SANS RECLAMER L'EMAIL : tu disposes DEJA de l'email professionnel du prospect (connu via
+  l'enrichissement, gere automatiquement). Donc des que le prospect choisit un creneau, RESERVE-le
+  immediatement (book_meeting), SANS lui demander son email ni aucune coordonnee. Ne dis JAMAIS
+  "donnez-moi votre email / votre numero" : c'est inutile et ca spamme. L'invitation part toute seule.
 - RDV propose et creneau choisi : book_meeting (reserve le creneau choisi, sans nouvelle question).
 - DEPLACEMENT : si un prospect dont le RDV est DEJA pris (etat RDV pris) signale un empechement,
   ne reserve pas un 2e RDV. Propose-lui de nouveaux creneaux (propose_meeting), puis deplace
@@ -1099,13 +1116,14 @@ class Orchestrator:
             return "REFUS : nombre max de relances atteint, il faut cloturer (mark_no_response)."
         if self._sent_recent("message", 24) >= self.cfg.max_messages_per_day:
             return "REFUS (plafond LinkedIn) : quota de messages des 24h atteint."
-        self.li.send_message(args["prospect_id"], args["text"], is_followup=is_followup)
-        self.mem.add_message(p["id"], "out", "message", args["text"])
+        msg = _strip_greeting(args["text"])  # pas de "Bonjour Madame X" repete a chaque message
+        self.li.send_message(args["prospect_id"], msg, is_followup=is_followup)
+        self.mem.add_message(p["id"], "out", "message", msg)
         fu = p["follow_up_count"] + (1 if is_followup else 0)
         self.mem.update_prospect(p["id"], state=M.IN_CONVERSATION, awaiting_reply=1,
                                  follow_up_count=fu, next_action_at=self._next_due(p))
         self._crm_safe(f"note msg {p['id']}",
-                       lambda: self.crm.log_note(p["id"], f"NOUS{' (relance)' if is_followup else ''}: {args['text']}"))
+                       lambda: self.crm.log_note(p["id"], f"NOUS{' (relance)' if is_followup else ''}: {msg}"))
         return "relance envoyee." if is_followup else "message envoye."
 
     def _do_propose_meeting(self, p, args, cycle) -> str:
@@ -1115,7 +1133,7 @@ class Orchestrator:
             return f"REFUS : pas de conversation active (etat={p['state']})."
         slots = self.cal.get_slots(self.cfg.window_days)  # peut lever ToolUnavailable
         slot_txt = "\n".join(f"- {s['label']}" for s in slots)
-        text = f"{args['message']}\n\n{slot_txt}\n\nDites-moi le creneau qui vous convient."
+        text = f"{_strip_greeting(args['message'])}\n\n{slot_txt}\n\nDites-moi le creneau qui vous convient."
         self.li.send_message(args["prospect_id"], text, is_followup=False)
         self.mem.add_message(p["id"], "out", "message", text)
         self.mem.update_prospect(p["id"], state=M.MEETING_PROPOSED, awaiting_reply=1,
@@ -1130,13 +1148,9 @@ class Orchestrator:
         # garde anti-doublon : un prospect deja booke -> on DEPLACE au lieu de re-reserver
         if p and (p.get("attributes") or {}).get("booking_uid") and getattr(self.cal, "reschedule", None):
             return self._do_reschedule_meeting(p, args, cycle)
-        # EMAIL OBLIGATOIRE : un RDV exige au moins l'email (invitation agenda). Le
-        # telephone est demande aussi mais reste optionnel (LinkedIn ne l'expose pas
-        # publiquement : on ne l'invente jamais, il n'est saisi que si le prospect le donne).
-        attrs = p.get("attributes") or {}
-        if not (attrs.get("email") or "").strip():
-            return ("RDV NON RESERVE : il manque l'email du prospect (indispensable pour envoyer "
-                    "l'invitation agenda). Demande-lui son email (send_message), puis reserve.")
+        # NB : on ne BLOQUE plus la reservation sur l'email. On dispose deja de l'email
+        # pro reel (enrichissement) ; a defaut, l'invitation part sur l'email du
+        # proprietaire. Bloquer creait une boucle de relances "donnez-moi votre email".
         if not p["offered_slots"]:
             return "REFUS : aucun creneau n'a encore ete propose a ce prospect."
         requested = args["slot_id"]
@@ -1356,9 +1370,9 @@ def chat_reply(settings, profile: str, history: list, message: str, calendar=Non
         "privees francaises (admissions, scolarite, career center, relation alumni). Tu discutes EN DIRECT "
         f"sur LinkedIn avec un prospect : {profile}. Objectif : mener la conversation de facon credible, "
         "repondre aux objections et aux questions, detecter le bon moment et proposer un rendez-vous de "
-        "30 minutes (entre 11h et 18h30). Pour l'invitation il faut l'email du prospect : si tu l'as deja, "
-        "reserve directement sans le redemander ; sinon demande-le UNE fois (et le telephone, enregistre "
-        "s'il le donne), sans jamais relancer en boucle pour l'email. Ne donne jamais de prix ferme sans cadrer un "
+        "30 minutes (entre 11h et 18h30). Des que le prospect choisit un creneau, reserve-le directement, "
+        "SANS lui demander son email ni aucune coordonnee (l'invitation est geree automatiquement). Ne dis "
+        "jamais 'donnez-moi votre email'. Ne donne jamais de prix ferme sans cadrer un "
         "echange. Ton professionnel, vouvoiement, concis (2 a 4 phrases). En francais. "
         "Adresse-toi au prospect par sa civilite et son nom de famille (Madame/Monsieur Nom), jamais par "
         "le prenom seul, mais SALUE ('Bonjour Madame Seguin') UNIQUEMENT dans ton premier message ; dans "
@@ -1441,7 +1455,10 @@ def chat_reply(settings, profile: str, history: list, message: str, calendar=Non
                 msgs.append({"role": "user", "content": results})
                 continue
             txt = " ".join(b.text for b in resp.content if getattr(b, "type", "") == "text").strip()
-            return _clean_text(txt or "...")
+            reply = _clean_text(txt or "...")
+            if history:  # pas le 1er message : on retire la salutation repetee
+                reply = _strip_greeting(reply)
+            return reply
         return "Un instant, je verifie mon agenda et je reviens vers vous tres vite."
     except Exception as e:
         return f"(erreur IA : {e})"

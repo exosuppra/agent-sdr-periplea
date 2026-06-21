@@ -13,7 +13,6 @@
 """
 from __future__ import annotations
 
-import copy
 import re
 import unicodedata
 
@@ -285,16 +284,7 @@ class ApifyLinkedIn:
                 pid = f"li_{base}_{n}"
                 n += 1
             self.directory[pid] = f
-            # Conversation simulee : a la prise de RDV, le prospect confirme son email pro
-            # REEL (issu de l'enrichissement) pour recevoir l'invitation. AUCUNE donnee
-            # inventee : si l'email n'a pas pu etre trouve, le prospect ne le donne pas.
-            script = copy.deepcopy(SCRIPTS[i % len(SCRIPTS)])
-            real_email = (f.get("email") or "").strip()
-            if script and real_email:
-                last = dict(script[-1])
-                last["text"] = last["text"].rstrip() + f" Pour l'invitation, vous pouvez m'ecrire a {real_email}."
-                script[-1] = last
-            self.scripts[pid] = script
+            self.scripts[pid] = SCRIPTS[i % len(SCRIPTS)]
             prospects.append({
                 "id": pid, "full_name": f["full_name"], "headline": f.get("headline", ""),
                 "company": f.get("company", ""), "profile_url": f.get("profile_url", ""),
