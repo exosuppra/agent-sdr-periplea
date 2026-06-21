@@ -191,10 +191,26 @@ class HubSpotCrm:
             return None
         return res[0].get("id") if res else None
 
+    def _contact_exists(self, cid: str) -> bool:
+        """Vrai si le contact existe encore et n'est pas archive/supprime. Un GET sans
+        archived=true renvoie 404 pour une fiche archivee : on la considere absente."""
+        if not cid:
+            return False
+        r = self._req("GET", f"/crm/v3/objects/contacts/{cid}")
+        return isinstance(r, dict) and not r.get("_error") and bool(r.get("id"))
+
     def upsert_contact(self, prospect: dict) -> str:
         self._check()
         if prospect["id"] in self.map and isinstance(self.map[prospect["id"]], str):
-            return self.map[prospect["id"]]
+            cid = self.map[prospect["id"]]
+            # On ne fait PAS confiance aveuglement au mapping persiste : la fiche a pu etre
+            # archivee/supprimee depuis (corbeille HubSpot). Si elle n'existe plus, on oublie
+            # ce mapping perime et on recree le contact (sinon le RDV/note serait rattache a
+            # une fiche archivee, donc invisible).
+            if self._contact_exists(cid):
+                return cid
+            self.map.pop(prospect["id"], None)
+            self._save()
         attrs = prospect.get("attributes") or {}
         parts = (prospect.get("full_name") or "").split(" ", 1)
         firstname = parts[0]
