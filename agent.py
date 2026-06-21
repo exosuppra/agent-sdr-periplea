@@ -1365,9 +1365,12 @@ def _run_chat_tool(calendar, crm, settings, profile, name, inp) -> str:
     return "Outil inconnu."
 
 
-def chat_reply(settings, profile: str, history: list, message: str, calendar=None, crm=None) -> str:
+def chat_reply(settings, profile: str, history: list, message: str, calendar=None, crm=None,
+               recover: bool = False) -> str:
     import anthropic
     from datetime import datetime
+    if recover and not history:
+        return ""  # rien a reprendre s'il n'y a pas de conversation en cours
     if not settings.anthropic_api_key:
         return "(cle IA manquante : renseigne ANTHROPIC_API_KEY)"
     # CONVERSATION CLOSE : si l'agent a deja acte qu'il arrete le contact, on NE repond plus
@@ -1418,8 +1421,9 @@ def chat_reply(settings, profile: str, history: list, message: str, calendar=Non
             "l'agenda REEL : consulter_disponibilites et reserver_rendez_vous. Regles imperatives : "
             "(1) ne propose et ne confirme JAMAIS un horaire sans l'avoir verifie via consulter_disponibilites ; "
             "(2) si le prospect propose un creneau qui n'est pas libre, dis-le clairement et propose a la place "
-            "les creneaux libres renvoyes par l'outil ; (3) avant de reserver, demande l'email du prospect pour "
-            "l'invitation ; (4) reserve uniquement via reserver_rendez_vous, puis confirme l'horaire exact reserve ; "
+            "les creneaux libres renvoyes par l'outil ; (3) tu peux demander l'email pour l'invitation, mais "
+            "RESERVE des que le prospect choisit un creneau, sans bloquer ni relancer en boucle s'il ne le donne pas ; "
+            "(4) reserve uniquement via reserver_rendez_vous, puis confirme l'horaire exact reserve ; "
             "(5) si le prospect veut DEPLACER un RDV deja pris, utilise deplacer_rendez_vous (l'ancien creneau est "
             "annule automatiquement), ne cree pas une seconde reservation. "
             "Convertis les dates parlees (par ex. '2 juillet a 14h') au format YYYY-MM-DDTHH:MM avant d'appeler un outil."
@@ -1450,10 +1454,18 @@ def chat_reply(settings, profile: str, history: list, message: str, calendar=Non
                 msgs[-1]["content"] += "\n" + content
             else:
                 msgs.append({"role": role, "content": content})
+        # En mode REPRISE, le prospect n'a rien dit : on injecte une consigne interne pour
+        # que l'agent reprenne contact de lui-meme apres l'incident technique resolu.
+        appended = message
+        if recover:
+            appended = ("[CONSIGNE INTERNE, ne pas citer telle quelle : un incident technique de notre cote "
+                        "vient d'etre resolu. Reprends SPONTANEMENT contact avec le prospect pour finaliser ce "
+                        "qui etait en attente, typiquement confirmer/reserver le creneau qu'il avait choisi. "
+                        "Excuse-toi brievement du court delai et utilise tes outils d'agenda maintenant qu'ils refonctionnent.]")
         if msgs and msgs[-1]["role"] == "user":
-            msgs[-1]["content"] += "\n" + message
+            msgs[-1]["content"] += "\n" + appended
         else:
-            msgs.append({"role": "user", "content": message})
+            msgs.append({"role": "user", "content": appended})
         if not msgs or msgs[0]["role"] != "user":
             msgs.insert(0, {"role": "user", "content": "Bonjour"})
     try:

@@ -485,6 +485,11 @@ async function startChat(){
 renderChat();
 let operatorHistory=[];
 let lastOutage='__init__';  // suivi des pannes : on alerte l'operateur a chaque changement
+let chatPendingRecontact=false;  // une panne est survenue pendant une conversation chatbot active
+function chatConvActive(){
+  return !lastPilot.active && chatHistory.length>0 && chatHistory.some(m=>m.role==='prospect')
+    && !(chatHistory[chatHistory.length-1] && chatHistory[chatHistory.length-1].role==='sys');
+}
 function updateOutageAlert(down){
   down = down||[];
   const sig=down.slice().sort().join(',');
@@ -492,6 +497,7 @@ function updateOutageAlert(down){
   const firstLoad=(lastOutage==='__init__'); lastOutage=sig;
   const LBL={crm:'le CRM (HubSpot)',calendar:"l'agenda (Cal.com)",linkedin:'LinkedIn'};
   if(down.length){
+    if(chatConvActive()) chatPendingRecontact=true;  // on recontactera a la reprise
     const noms=down.map(t=>LBL[t]||t).join(', ');
     const plan=[];
     if(down.includes('crm')) plan.push("CRM : je continue de prospecter et de prendre des RDV ; chaque ecriture CRM qui echoue est mise en file et rejouee automatiquement des le retour, rien n'est perdu.");
@@ -502,7 +508,19 @@ function updateOutageAlert(down){
   } else if(!firstLoad){
     operatorHistory.push({role:'agent',text:"Retablissement : tous les outils sont de nouveau disponibles. Je rejoue les actions en attente et je reprends normalement."});
     renderOperator();
+    if(chatPendingRecontact){ chatPendingRecontact=false; recontactAfterRecovery(); }  // le chatbot recontacte tout seul
   }
+}
+async function recontactAfterRecovery(){
+  if(chatBusy){ setTimeout(recontactAfterRecovery,1500); return; }
+  if(!chatConvActive()) return;
+  chatBusy=true; chatWaiting=true; renderChat();
+  try{
+    const r=await (await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history:chatHistory,message:"",recover:true,profile:chatProfile()})})).json();
+    chatWaiting=false;
+    if(!r.closed && r.reply){ chatHistory.push({role:'agent',text:r.reply}); }
+  }catch(e){ chatWaiting=false; }
+  finally{ chatBusy=false; renderChat(); }
 }
 function renderOperator(){
   const l=document.getElementById('oplog'); if(!l)return;
@@ -573,7 +591,8 @@ class Handler(BaseHTTPRequestHandler):
             crm = build_chat_crm(settings)
             reply = chat_reply(settings,
                                body.get("profile", "directeur des admissions, ecole de commerce privee"),
-                               body.get("history", []), body.get("message", ""), calendar=cal, crm=crm)
+                               body.get("history", []), body.get("message", ""), calendar=cal, crm=crm,
+                               recover=bool(body.get("recover")))
             if reply == "__CONV_CLOSED__":
                 self._json({"reply": "", "closed": True})
             else:
