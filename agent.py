@@ -714,11 +714,17 @@ class Orchestrator:
                 # snapshot, rendu en evidence) pour qu'il se corrige SEUL au cycle suivant.
                 # Les garde-fous deterministes ci-dessous ne servent qu'en DERNIER recours.
                 failed = isinstance(result, str) and result.startswith("ECHEC")
-                if not failed:
+                # Une panne d'outil (indisponible / limite de debit) est TRANSITOIRE : c'est de
+                # la degradation gracieuse, ca reviendra. On ne penalise donc PAS le prospect
+                # (sinon le coupe-circuit le mettrait de cote et empecherait la reprise au
+                # retablissement). Seuls les echecs LOGIQUES persistants declenchent le garde-fou.
+                transient = failed and ("indisponible" in result or "limite de debit" in result)
+                if not failed or transient:
                     self._fail_sig = None
                     self._fail_count = 0
-                    self._stuck = 0
                     self._last_fail = None
+                    if not transient:
+                        self._stuck = 0   # vrai succes : on remet le compteur global a zero
                 else:
                     self._stuck += 1
                     sig = f"{action}:{pid}"
