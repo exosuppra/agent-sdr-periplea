@@ -332,7 +332,10 @@ function render(s){
   document.getElementById('kpis').innerHTML=
     kpi("RDV pris",booked,"#22c55e")+kpi("En cours",tot-booked-disq-dead,"#3b82f6")
     +kpi("Disqualifiés",disq,"#64748b")+kpi("Abandonnés",dead,"#ef4444")+kpi("Prospects",tot,"#9aa3b2");
-  document.getElementById('board').innerHTML=COLS.map(col=>{
+  if(s.running && tot===0){
+    document.getElementById('board').innerHTML='<div class="hint" style="padding:24px;font-size:14px;line-height:1.6">L\\'agent recherche de vrais profils et lit chaque fiche LinkedIn pour en extraire l\\'entreprise, le poste et l\\'email vérifié. Cette première étape prend 1 à 2 minutes ; les prospects apparaîtront ensemble. Patientez…</div>';
+  }
+  else document.getElementById('board').innerHTML=COLS.map(col=>{
     const ps=s.prospects.filter(p=>p.state===col[0]);
     return `<div class="col"><h2><span>${col[1]}</span><span>${ps.length}</span></h2>`+
       ps.map(p=>`<div class="card" style="--ac:${col[2]}" onclick="open_('${p.id}')">
