@@ -34,9 +34,11 @@ STATE = {"running": False}
 
 # ---------- lecture de l'etat ----------
 def read_state(db: str) -> dict:
+    from chaos import tool_is_down
+    tools_down = [t for t in ("crm", "calendar", "linkedin") if tool_is_down(t)]
     pilot = {"active": pilot_active(), "transcript": pilot_transcript()}
     base = {"icp": "", "ready": False, "running": STATE["running"],
-            "prospects": [], "decisions": [], "counts": {}, "pilot": pilot}
+            "prospects": [], "decisions": [], "counts": {}, "pilot": pilot, "tools_down": tools_down}
     try:
         con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
     except sqlite3.OperationalError:
@@ -68,7 +70,8 @@ def read_state(db: str) -> dict:
         counts = {r["state"]: r["n"] for r in
                   con.execute("SELECT state, COUNT(*) n FROM prospects GROUP BY state")}
         return {"icp": icp, "ready": True, "running": STATE["running"],
-                "prospects": prospects, "decisions": decisions, "counts": counts, "pilot": pilot}
+                "prospects": prospects, "decisions": decisions, "counts": counts, "pilot": pilot,
+                "tools_down": tools_down}
     except sqlite3.OperationalError:
         return base
     finally:
@@ -325,6 +328,7 @@ function kpi(l,v,c){return `<div class="kpi"><b style="color:${c}">${v}</b>${l}<
 function render(s){
   if(s.ready===false && DATA.prospects && DATA.prospects.length && !s.running){return;}
   DATA=s;
+  updateOutageAlert(s.tools_down||[]);
   document.getElementById('go').disabled=s.running;
   document.getElementById('runstate').textContent=s.running?"⏳ agent en cours…":"";
   document.getElementById('icpshow').textContent=s.icp?("ICP courant : "+s.icp):"";
@@ -480,6 +484,26 @@ async function startChat(){
 }
 renderChat();
 let operatorHistory=[];
+let lastOutage='__init__';  // suivi des pannes : on alerte l'operateur a chaque changement
+function updateOutageAlert(down){
+  down = down||[];
+  const sig=down.slice().sort().join(',');
+  if(sig===lastOutage) return;
+  const firstLoad=(lastOutage==='__init__'); lastOutage=sig;
+  const LBL={crm:'le CRM (HubSpot)',calendar:"l'agenda (Cal.com)",linkedin:'LinkedIn'};
+  if(down.length){
+    const noms=down.map(t=>LBL[t]||t).join(', ');
+    const plan=[];
+    if(down.includes('crm')) plan.push("CRM : je continue de prospecter et de prendre des RDV ; chaque ecriture CRM qui echoue est mise en file et rejouee automatiquement des le retour, rien n'est perdu.");
+    if(down.includes('calendar')) plan.push("Agenda : je ne reserve pas pour l'instant ; je garde les prospects interesses en attente et je reserverai des le retour.");
+    if(down.includes('linkedin')) plan.push("LinkedIn : je suspends les envois et les reprends des le retour.");
+    operatorHistory.push({role:'agent',text:"PANNE DETECTEE : "+noms+" actuellement indisponible(s).\\n"+plan.join("\\n")});
+    renderOperator();
+  } else if(!firstLoad){
+    operatorHistory.push({role:'agent',text:"Retablissement : tous les outils sont de nouveau disponibles. Je rejoue les actions en attente et je reprends normalement."});
+    renderOperator();
+  }
+}
 function renderOperator(){
   const l=document.getElementById('oplog'); if(!l)return;
   l.innerHTML=operatorHistory.map(m=>`<div class="cbub ${m.role==='agent'?'cag':'cop'}">${esc(m.text)}</div>`).join('')

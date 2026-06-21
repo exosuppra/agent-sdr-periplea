@@ -11,6 +11,29 @@ ecrire_au_prospect et reprogrammer_rdv.
 from __future__ import annotations
 
 import dnc
+from chaos import tool_is_down
+
+
+def _outage_status() -> str:
+    """Detecte une panne en cours (CRM / agenda / LinkedIn) et explique comment l'agent
+    continue malgre tout. Renvoie '' si tout va bien."""
+    libelles = {"crm": "le CRM (HubSpot)", "calendar": "l'agenda (Cal.com)", "linkedin": "LinkedIn"}
+    down = [libelles[t] for t in libelles if tool_is_down(t)]
+    if not down:
+        return ""
+    plans = []
+    if tool_is_down("crm"):
+        plans.append("CRM indisponible : je continue de prospecter et de prendre des RDV ; chaque "
+                     "ecriture CRM qui echoue (note, contact, RDV) est mise en file d'attente et REJOUEE "
+                     "automatiquement des que le CRM revient. Rien n'est perdu.")
+    if tool_is_down("calendar"):
+        plans.append("Agenda indisponible : je ne reserve pas pour l'instant ; je garde les prospects "
+                     "interesses en attente et je leur proposerai/reserverai un creneau des le retablissement.")
+    if tool_is_down("linkedin"):
+        plans.append("LinkedIn indisponible : je suspends les envois et relances, et je les reprends "
+                     "des que l'acces revient.")
+    return ("ALERTE PANNE : " + ", ".join(down) + " actuellement indisponible(s).\n"
+            "Comment je gere et ce que je ferai au retablissement :\n- " + "\n- ".join(plans))
 import memory as M
 
 OPERATOR_TOOLS = [
@@ -61,6 +84,9 @@ def _state_summary(mem) -> str:
             seg += f" | dernier message: {last}"
         lines.append(seg)
     body = "\n".join(lines) or "(aucun prospect dans la base pour le moment)"
+    outage = _outage_status()
+    if outage:
+        body = outage + "\n\n" + body  # la panne en tete, pour que l'agent la signale en premier
     n_dnc = dnc.count()
     if n_dnc:
         body += f"\n\nListe de non-sollicitation (opposition RGPD) : {n_dnc} personne(s), a ne jamais recontacter."
@@ -176,7 +202,9 @@ def supervisor_reply(settings, question: str, history: list,
         "ses consignes : ecrire a un prospect pour lui transmettre une info, ou deplacer un RDV pris "
         "(empechement). Sois concis et factuel, en francais, sans tiret cadratin. Quand l'operateur "
         "te demande d'agir, utilise l'outil adapte ; quand il demande une information, reponds en texte "
-        "en t'appuyant sur l'etat ci-dessous.\n\n"
+        "en t'appuyant sur l'etat ci-dessous. IMPORTANT : si l'etat commence par une ALERTE PANNE, "
+        "SIGNALE-LA en premier a l'operateur, dis quel outil est en panne et explique concretement comment "
+        "tu continues et ce que tu feras au retablissement (file de reprise CRM rejouee, RDV reportes, etc.).\n\n"
         f"Nous sommes le {today}.\n\nETAT ACTUEL DU PIPELINE :\n{summary}\n"
     )
     msgs = _build_msgs(history, question)
