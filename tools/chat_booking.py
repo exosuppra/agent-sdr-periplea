@@ -211,7 +211,30 @@ def reserver(calendar, settings, profile: str, moment: str, email_invite: str = 
             + (f"Lien: {link}. " if link else "") + "Confirme chaleureusement au prospect.")
 
 
-def deplacer(calendar, settings, profile: str, nouveau_moment: str, email_invite: str = "") -> str:
+def _booking_at(calendar, email: str, moment: str):
+    """Retrouve LE RDV existant dont le debut correspond a `moment` (heure de Paris), parmi
+    les RDV a venir de l'invite. Indispensable quand plusieurs RDV partagent le meme email
+    (ex. tests sous l'email du compte) : sinon on deplacerait le mauvais (le plus proche)."""
+    req = _parse_moment(moment)
+    lister = getattr(calendar, "upcoming_bookings", None)
+    if not (req and callable(lister)):
+        return None
+    try:
+        for b in lister(email) or []:
+            start = b.get("start", "")
+            try:
+                d = _slot_paris({"start": start})
+            except Exception:
+                continue
+            if (d.year, d.month, d.day, d.hour, d.minute) == (req.year, req.month, req.day, req.hour, req.minute):
+                return b
+    except Exception:
+        return None
+    return None
+
+
+def deplacer(calendar, settings, profile: str, nouveau_moment: str, email_invite: str = "",
+             ancien_moment: str = "") -> str:
     """Deplace un RDV deja reserve vers un nouveau creneau (l'ancien est annule)."""
     finder = getattr(calendar, "find_booking", None)
     resched = getattr(calendar, "reschedule", None)
@@ -222,7 +245,9 @@ def deplacer(calendar, settings, profile: str, nouveau_moment: str, email_invite
         return "Nouvel horaire non compris. Redemande le jour et l'heure au prospect."
     email = (email_invite or "").strip() or settings.owner_email
     try:
-        existing = finder(email) or {}
+        # On cible EN PRIORITE le RDV qui est a l'heure actuelle indiquee (ancien_moment) ;
+        # a defaut seulement, le prochain RDV de l'invite (comportement historique).
+        existing = _booking_at(calendar, email, ancien_moment) or finder(email) or {}
     except Exception as e:
         return f"AGENDA INDISPONIBLE: {e}. Reessaie plus tard."
     if not existing.get("uid"):

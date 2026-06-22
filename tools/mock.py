@@ -312,6 +312,15 @@ class MockCalendar:
     def find_booking(self, attendee_email: str = "") -> dict:
         return dict(self._last_booking) if self._last_booking else {}
 
+    def upcoming_bookings(self, attendee_email: str = "") -> list:
+        """Tous les RDV en cours : [{uid, start}, ...] (sert a retrouver le bon par son heure)."""
+        out = []
+        for uid, slot_id in self._by_uid.items():
+            slot = next((s for s in self._slots if s["id"] == slot_id), None)
+            if slot:
+                out.append({"uid": uid, "start": slot["start"]})
+        return out
+
     def reschedule(self, booking_uid: str, new_slot_id: str, reason: str = "") -> dict:
         self._check()
         slot = next((s for s in self._slots if s["id"] == new_slot_id), None)

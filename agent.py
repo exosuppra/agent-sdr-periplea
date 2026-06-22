@@ -1337,12 +1337,16 @@ CHAT_TOOLS = [
          "email_invite": {"type": "string", "description": "Email du prospect pour l'invitation (demande-le avant si tu ne l'as pas)."}},
          "required": ["moment"]}},
     {"name": "deplacer_rendez_vous",
-     "description": "Quand le prospect veut DEPLACER un RDV deja reserve, deplace-le vers un nouveau creneau. "
-                    "L'ancien creneau est ANNULE automatiquement (pas de doublon). L'outil verifie d'abord "
-                    "que le nouveau creneau est libre ; sinon il renvoie des alternatives sans rien changer.",
+     "description": "OBLIGATOIRE des que le prospect veut DEPLACER, DECALER ou CHANGER l'heure d'un RDV deja "
+                    "reserve (ex. 'plutot a 14h', 'on peut decaler ?'). Deplace le RDV existant : l'ancien creneau "
+                    "est ANNULE automatiquement (PAS de seconde reservation). N'utilise JAMAIS reserver_rendez_vous "
+                    "pour un deplacement, cela creerait un doublon. L'outil verifie que le nouveau creneau est libre ; "
+                    "sinon il renvoie des alternatives sans rien changer.",
      "input_schema": {"type": "object", "properties": {
          "nouveau_moment": {"type": "string", "description": "Nouveau creneau souhaite, format YYYY-MM-DDTHH:MM heure de Paris."},
-         "email_invite": {"type": "string", "description": "Email du prospect (sert a retrouver son RDV existant)."}},
+         "ancien_moment": {"type": "string", "description": "Creneau ACTUEL du RDV a deplacer (celui deja reserve dans la conversation), "
+                           "format YYYY-MM-DDTHH:MM heure de Paris. Indispensable pour identifier le bon RDV a deplacer."},
+         "email_invite": {"type": "string", "description": "Email du prospect, si connu (aide a retrouver son RDV existant)."}},
          "required": ["nouveau_moment"]}},
 ]
 
@@ -1388,7 +1392,8 @@ def _run_chat_tool(calendar, crm, settings, profile, name, inp) -> str:
         if name == "reserver_rendez_vous":
             return CB.reserver(calendar, settings, profile, inp.get("moment", ""), inp.get("email_invite", ""))
         if name == "deplacer_rendez_vous":
-            return CB.deplacer(calendar, settings, profile, inp.get("nouveau_moment", ""), inp.get("email_invite", ""))
+            return CB.deplacer(calendar, settings, profile, inp.get("nouveau_moment", ""),
+                               inp.get("email_invite", ""), inp.get("ancien_moment", ""))
         if name == "noter_contact_recommande":
             return _chat_register_referral(crm, inp)
     except Exception as e:
@@ -1460,8 +1465,11 @@ def chat_reply(settings, profile: str, history: list, message: str, calendar=Non
             "(3) tu peux demander l'email pour l'invitation, mais "
             "RESERVE des que le prospect choisit un creneau, sans bloquer ni relancer en boucle s'il ne le donne pas ; "
             "(4) reserve uniquement via reserver_rendez_vous, puis confirme l'horaire exact reserve ; "
-            "(5) si le prospect veut DEPLACER un RDV deja pris, utilise deplacer_rendez_vous (l'ancien creneau est "
-            "annule automatiquement), ne cree pas une seconde reservation. "
+            "(5) si le prospect veut DEPLACER, DECALER ou CHANGER l'heure d'un RDV deja pris (ex. 'plutot a 14h', "
+            "'on peut decaler ?'), utilise TOUJOURS deplacer_rendez_vous, JAMAIS reserver_rendez_vous : "
+            "passe nouveau_moment ET ancien_moment (le creneau actuellement reserve, que tu connais de la conversation) "
+            "pour qu'on deplace le BON RDV et qu'on annule l'ancien. Une seconde reservation creerait un doublon "
+            "et l'ancien creneau resterait bloque dans l'agenda. "
             "Convertis les dates parlees (par ex. '2 juillet a 14h') au format YYYY-MM-DDTHH:MM avant d'appeler un outil."
         )
     if use_tools and crm is not None:

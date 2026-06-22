@@ -131,6 +131,21 @@ class CalComCalendar:
         b = items[0]
         return {"uid": b.get("uid", ""), "start": b.get("start", "")}
 
+    def upcoming_bookings(self, attendee_email: str = "") -> list:
+        """Liste les RDV a venir (filtre par email d'invite si fourni) : [{uid, start}, ...].
+        Sert a retrouver LE bon RDV a deplacer par son heure, pas seulement le plus proche."""
+        self._check()
+        params = {"status": "upcoming", "sortStart": "asc", "take": 50}
+        if attendee_email:
+            params["attendeeEmail"] = attendee_email
+        try:
+            r = requests.get(f"{self.base}/bookings", headers=self._headers("2024-08-13"),
+                             params=params, timeout=20)
+        except requests.RequestException as e:
+            raise ToolUnavailable(f"reseau Cal.com : {e}")
+        items = self._handle(r).get("data", []) or []
+        return [{"uid": b.get("uid", ""), "start": b.get("start", "")} for b in items]
+
     def reschedule(self, booking_uid: str, new_slot_id: str, reason: str = "") -> dict:
         """Deplace un RDV vers un nouveau creneau. Cal.com annule l'ancien automatiquement."""
         self._check()
