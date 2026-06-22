@@ -64,6 +64,27 @@ def _strip_greeting(text):
     return cleaned or text
 
 
+def _fit_note(text, limit: int = 300) -> str:
+    """Ajuste une note d'invitation a la limite LinkedIn SANS couper en plein mot.
+    Privilegie une fin de phrase (. ! ?) qui tient dans la limite ; a defaut coupe
+    au dernier espace. Evite le 'sur le s' brutal qu'on avait avec un simple [:300]."""
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    window = text[:limit]
+    # 1) derniere fin de phrase complete dans la limite (si elle n'arrive pas trop tot)
+    best = max(window.rfind(". "), window.rfind("! "), window.rfind("? "),
+               window.rfind(".\n"), window.rfind("!\n"), window.rfind("?\n"))
+    if best >= int(limit * 0.5):
+        return window[:best + 1].strip()
+    # 2) sinon, coupe au dernier espace (jamais en plein mot) + points de suspension,
+    #    en gardant la place pour les "..." pour ne jamais depasser la limite dure.
+    window = text[:limit - 3]
+    sp = window.rfind(" ")
+    base = window[:sp] if sp > 0 else window
+    return base.rstrip(" ,;:") + "..."
+
+
 # Marqueurs indiquant que l'agent a DEJA acte l'arret du contact -> conversation close.
 _CLOSURE_MARKERS = ("recontacterai plus", "recontacterons plus", "ne plus vous contacter",
                     "ne vous solliciterai plus", "je vous retire", "vous retire de mes",
@@ -133,8 +154,9 @@ TOOLS = [
     },
     {
         "name": "send_invitation",
-        "description": "Envoie une invitation LinkedIn avec une note PERSONNALISEE (<=300 caracteres). "
-                       "Uniquement a un prospect QUALIFIE. Pas de template generique.",
+        "description": "Envoie une invitation LinkedIn avec une note PERSONNALISEE et COMPLETE de 300 "
+                       "caracteres MAXIMUM (vise 250-280, termine tes phrases). Uniquement a un prospect "
+                       "QUALIFIE. Pas de template generique.",
         "input_schema": {
             "type": "object",
             "properties": {"prospect_id": {"type": "string"}, "note": {"type": "string"}},
@@ -280,6 +302,10 @@ REGLES IMPERATIVES :
   promotion = remplissage des promos. N'attaque PAS directement par le pitch. Bannis les formules
   vagues ("votre role m'a semble pertinent"). N'invente JAMAIS un fait (chiffre, recompense, actualite)
   que tu n'as pas ; si l'info manque, reste sur l'enjeu metier concret, jamais sur un compliment.
+  CONTRAINTE DE LONGUEUR (note d'invitation LinkedIn) : la note doit etre COMPLETE et tenir dans
+  300 caracteres MAXIMUM (vise 250-280). Ecris un message bref qui se suffit a lui-meme : termine
+  toujours ta derniere phrase et ta question, ne commence JAMAIS une idee que tu ne pourras pas finir.
+  Mieux vaut 2 phrases completes que 4 phrases coupees.
 - Qualifie AVANT tout contact : verifie l'eligibilite de l'ecole (privee, 500-5000 etudiants,
   hors ecoles d'ingenieur publiques), la seniorite du poste, ET appelle check_client_base
   pour ecarter une ecole deja cliente.
@@ -427,7 +453,7 @@ class ScriptedPlanner:
                     f"sur la centralisation de leurs outils (admissions, career center...). "
                     f"Curieux d'echanger sur {p['company']} ?")
             return (f"{p['full_name']} est qualifie, j'envoie une invitation personnalisee.",
-                    "send_invitation", {"prospect_id": pid, "note": note[:300]})
+                    "send_invitation", {"prospect_id": pid, "note": _fit_note(note, 300)})
 
         if state in (M.CONTACTED, M.IN_CONVERSATION, M.MEETING_PROPOSED):
             if p["awaiting"] and p["due"]:
@@ -1110,7 +1136,7 @@ class Orchestrator:
                     "on temporise pour ne pas griller le compte.")
         if self._sent_recent("invite", 24) >= self.cfg.max_invites_per_day:
             return "REFUS (plafond LinkedIn) : quota d'invitations des 24h atteint."
-        note = args["note"][:300]
+        note = _fit_note(args["note"], 300)
         self.li.send_invitation(args["prospect_id"], note)
         self.mem.add_message(p["id"], "out", "invite", note)
         self.mem.update_prospect(p["id"], state=M.CONTACTED, awaiting_reply=1,
