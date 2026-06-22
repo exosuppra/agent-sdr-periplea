@@ -1397,7 +1397,7 @@ def _run_chat_tool(calendar, crm, settings, profile, name, inp) -> str:
 
 
 def chat_reply(settings, profile: str, history: list, message: str, calendar=None, crm=None,
-               recover: bool = False) -> str:
+               recover: bool = False, flags: dict | None = None) -> str:
     import anthropic
     from datetime import datetime
     if recover and not history:
@@ -1516,6 +1516,8 @@ def chat_reply(settings, profile: str, history: list, message: str, calendar=Non
                 for b in resp.content:
                     if getattr(b, "type", "") == "tool_use":
                         out = _run_chat_tool(calendar, crm, settings, profile, b.name, b.input)
+                        if flags is not None and isinstance(out, str) and (out.startswith("RESERVE") or out.startswith("DEPLACE")):
+                            flags["booked"] = True  # un RDV vient d'etre reserve/deplace : la conversation est conclue
                         results.append({"type": "tool_result", "tool_use_id": b.id, "content": out})
                 msgs.append({"role": "user", "content": results})
                 continue

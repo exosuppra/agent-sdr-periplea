@@ -457,7 +457,7 @@ async function flushChat(){
     const r=await (await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history:prior,message:combined,profile:chatProfile()})})).json();
     chatWaiting=false;
     if(r.closed){ if(!(chatHistory.length && chatHistory[chatHistory.length-1].role==='sys')) chatHistory.push({role:'sys',text:"Conversation terminée : le prospect a demandé l'arrêt, l'agent ne répond plus."}); }
-    else { chatHistory.push({role:'agent',text:r.reply||'(pas de réponse)'}); }
+    else { chatHistory.push({role:'agent',text:r.reply||'(pas de réponse)'}); if(r.booked) chatBookingDone=true; }
   }catch(e){ chatWaiting=false; chatHistory.push({role:'agent',text:'(erreur réseau)'}); }
   finally{ chatBusy=false; renderChat(); }
 }
@@ -473,9 +473,10 @@ function updatePilotWhy(){
     +(p.qualification&&p.qualification.reasons?`<div class="pw-row"><b>Qualification :</b> ${esc(p.qualification.reasons)}</div>`:'')
     +(why||'<div class="pw-row" style="color:var(--mut)">L\\'agent analyse votre profil...</div>');
 }
-function resetChat(){chatHistory=[];renderChat();}
+function resetChat(){chatHistory=[];chatBookingDone=false;chatPendingRecontact=false;renderChat();}
 async function startChat(){
   if(lastPilot.active)return;
+  chatBookingDone=false; chatPendingRecontact=false;
   chatHistory=[{role:'agent',text:'…'}]; renderChat();
   try{ const r=await (await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history:[],message:'',profile:chatProfile()})})).json();
     chatHistory=[{role:'agent',text:r.reply||'(pas de réponse)'}];
@@ -486,8 +487,11 @@ renderChat();
 let operatorHistory=[];
 let lastOutage='__init__';  // suivi des pannes : on alerte l'operateur a chaque changement
 let chatPendingRecontact=false;  // une panne est survenue pendant une conversation chatbot active
+let chatBookingDone=false;       // un RDV a deja ete reserve dans cette conversation -> conclue
 function chatConvActive(){
-  return !lastPilot.active && chatHistory.length>0 && chatHistory.some(m=>m.role==='prospect')
+  // conversation "active" = en cours ET pas conclue : ni close (sys), ni deja un RDV reserve.
+  // Sinon, couper/retablir l'agenda relancerait un recontact qui re-tente un creneau deja pris.
+  return !lastPilot.active && !chatBookingDone && chatHistory.length>0 && chatHistory.some(m=>m.role==='prospect')
     && !(chatHistory[chatHistory.length-1] && chatHistory[chatHistory.length-1].role==='sys');
 }
 function updateOutageAlert(down){
@@ -518,7 +522,7 @@ async function recontactAfterRecovery(){
   try{
     const r=await (await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({history:chatHistory,message:"",recover:true,profile:chatProfile()})})).json();
     chatWaiting=false;
-    if(!r.closed && r.reply){ chatHistory.push({role:'agent',text:r.reply}); }
+    if(!r.closed && r.reply){ chatHistory.push({role:'agent',text:r.reply}); if(r.booked) chatBookingDone=true; }
   }catch(e){ chatWaiting=false; }
   finally{ chatBusy=false; renderChat(); }
 }
@@ -589,14 +593,15 @@ class Handler(BaseHTTPRequestHandler):
             settings = Settings.load()
             cal = build_chat_calendar(settings)
             crm = build_chat_crm(settings)
+            flags = {}
             reply = chat_reply(settings,
                                body.get("profile", "directeur des admissions, ecole de commerce privee"),
                                body.get("history", []), body.get("message", ""), calendar=cal, crm=crm,
-                               recover=bool(body.get("recover")))
+                               recover=bool(body.get("recover")), flags=flags)
             if reply == "__CONV_CLOSED__":
                 self._json({"reply": "", "closed": True})
             else:
-                self._json({"reply": reply})
+                self._json({"reply": reply, "booked": bool(flags.get("booked"))})
         elif self.path.startswith("/api/operator"):
             from config import Settings
             from supervisor import supervisor_reply
