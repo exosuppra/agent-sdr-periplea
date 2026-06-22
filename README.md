@@ -38,6 +38,10 @@ regarde le pipeline se remplir + la trace de décision défiler. Clic sur une ca
 
 **En ligne de commande :** `python dashboard.py` (cockpit) ou `python run.py --reset --target 5` (terminal seul).
 
+## Exemple de parcours complet (livrable)
+
+`exemple_parcours_complet.md` (et `.jsonl`) contient un **parcours prospect complet** trace de bout en bout : reception de l'ICP, identification, verification base clients, qualification, message d'approche, conversation, puis RDV decroche OU disqualification, avec le raisonnement de l'agent a chaque cycle. Prospects fictifs (mode bac a sable), donc aucune donnee personnelle reelle. Rejouable a tout moment : `python run.py --reset --target 3` (un nouveau log apparait dans `logs/`).
+
 ## Les 3 tests de la démo (tout cliquable dans le cockpit)
 
 **1. ICP variant donné à chaud** : taper le nouvel ICP dans la case et cliquer
